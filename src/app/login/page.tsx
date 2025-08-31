@@ -16,39 +16,40 @@ export default function LoginPage() {
   const { status } = useWeb3Auth();
   const { isConnected } = useAccount();
 
-  // Asegura que el contenedor del login modal esté visible
+const inline = REQUIRE_CONTACT ? useInlineContactFlow() : null;
+  const showingForm = REQUIRE_CONTACT && inline?.connected && inline?.phase === "needsContact";
+
+  // Mostrar/ocultar overlay centrado
   useEffect(() => {
-    const el = document.getElementById("w3a-login");
-    if (el) el.classList.remove("hidden");
-    return () => { if (el) el.classList.add("hidden"); };
-  }, []);
+    const wrap = document.getElementById("w3a-login-wrap");
+    if (!wrap) return;
 
-  // Hook de contacto (sólo si lo requerimos)
-  const inline = REQUIRE_CONTACT ? useInlineContactFlow() : null;
+    // Muestra el modal de web3auth cuando NO estás mostrando el formulario de contacto
+    wrap.classList.toggle("hidden", !!showingForm);
 
-  // Si NO requerimos contacto y ya hay sesión, directo al dashboard
+    // Limpia al salir de la página
+    return () => { wrap.classList.add("hidden"); };
+  }, [showingForm]);
+
+  // Si NO requerimos contacto y ya hay sesión → dashboard
   useEffect(() => {
     if (!REQUIRE_CONTACT && status === "connected" && isConnected) {
       router.replace("/dashboard");
     }
   }, [status, isConnected, router]);
 
-  // Si SÍ requerimos contacto: cuando queda listo => dashboard
+  // Si SÍ requerimos contacto: cuando queda listo → dashboard
   useEffect(() => {
     if (REQUIRE_CONTACT && inline?.phase === "ready") {
       router.replace("/dashboard");
     }
   }, [inline?.phase, router]);
 
-  const showingForm =
-    REQUIRE_CONTACT && inline?.connected && inline?.phase === "needsContact";
-
   return (
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
+      <main className="flex flex-col gap-[32px] row-start-2 items-center w-full max-w-3xl sm:max-w-4xl">
         <div className="max-w-xl w-full mx-auto p-6 space-y-4">
           {/* Web3Auth modal mountpoint */}
-          <div id="w3a-login" style={{ display: showingForm ? "none" : "block" }} />
 
           {showingForm && inline && (
             <InlineContactForm

@@ -47,7 +47,7 @@ export default function InlineContactForm({
   };
 
   return (
-    <Card className="w-full">
+    <Card className="w-full ">
       <CardHeader>
         <CardTitle>Completa tus datos</CardTitle>
       </CardHeader>

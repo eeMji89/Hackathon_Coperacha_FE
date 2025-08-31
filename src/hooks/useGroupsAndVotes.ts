@@ -118,13 +118,13 @@ export function useGroupsAndVotes() {
     return yes + remaining < vote.requiredVotes;
   };
 
-  // ——— Crear Grupo (sin monto inicial)
+  // ——— Crear Grupo 
   const createGroup = async (args: {
     name: string;
     description: string;
-    creatorName: string;          // p.ej. "Juan Pérez"
-    creatorAddress?: string;      // opcional, por si quieres guardarla
-    memberWallets: string[];      // direcciones/ENS adicionales
+    creatorName: string;          
+    creatorAddress?: string;      
+    memberWallets: string[];    
   }) => {
     const uniqueWallets = Array.from(
       new Set(args.memberWallets.map((w) => w.trim()).filter(Boolean))

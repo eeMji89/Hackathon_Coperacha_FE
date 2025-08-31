@@ -15,7 +15,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-          <div id="w3a-login" className="hidden" />
+          <div id="w3a-login-wrap" className="hidden fixed inset-0 z-50">
+          <div className="w-full h-full grid place-items-center p-6">
+            <div id="w3a-login"  />
+          </div>
+        </div>
+          
                
         {/* luego montas providers */}
         <Providers>{children}</Providers>
