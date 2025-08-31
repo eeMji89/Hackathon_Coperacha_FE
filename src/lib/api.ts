@@ -1,7 +1,16 @@
 // src/lib/api.ts
 import { getJSON, postJSON } from "@/lib/rest";
 
-/** ---- Validación de wallet (ajusta la ruta si tu backend usa otra) ---- */
+/** ==== Tipos de backend ==== */
+export type BackendUser = {
+  _id?: string;
+  nombre: string;
+  correo: string;
+  celular: string;
+  billetera: string;
+};
+
+/** ---- Validación de wallet (ya lo tenías) ---- */
 export async function validateWallet(address: string): Promise<boolean> {
   try {
     const res = await getJSON<{ exists: boolean }>(
@@ -9,27 +18,45 @@ export async function validateWallet(address: string): Promise<boolean> {
     );
     return !!res?.exists;
   } catch {
-    // fallback dev: pasa si parece dirección o ENS
     const hex42 = /^0x[a-fA-F0-9]{40}$/;
     const ens = /^[a-z0-9-]+\.eth$/i;
     return hex42.test(address) || ens.test(address);
   }
 }
 
-/** ---- Crear usuario: POST /createUser con llaves en español ---- */
+/** ---- Lecturas de usuario ---- */
+export async function getUserByWallet(wallet: string): Promise<BackendUser | null> {
+  try {
+    return await getJSON<BackendUser>(`/users/wallet/${wallet}`);
+  } catch {
+    return null; // 404 u otro error => tratamos como no existe
+  }
+}
+
+export async function getUserByEmail(correo: string): Promise<BackendUser | null> {
+  try {
+    return await getJSON<BackendUser>(`/users/email/${encodeURIComponent(correo)}`);
+  } catch {
+    return null;
+  }
+}
+
+export async function getUserByPhone(celular: string): Promise<BackendUser | null> {
+  try {
+    return await getJSON<BackendUser>(`/users/phone/${encodeURIComponent(celular)}`);
+  } catch {
+    return null;
+  }
+}
+
+/** ---- Crear usuario (ya lo tenías) ---- */
 export type CreateUserBackendBody = {
   nombre: string;
   correo: string;
   celular: string;
   billetera: string;
 };
-
-// Si tu backend devuelve el usuario creado, tipéalo aquí:
-export type CreateUserResponse = {
-  ok?: boolean;
-  id?: string;
-  // ...otros campos que devuelva tu API
-};
+export type CreateUserResponse = { ok?: boolean; id?: string };
 
 export async function createUser(input: {
   name: string;
@@ -46,11 +73,11 @@ export async function createUser(input: {
   return postJSON<CreateUserResponse>("/createUser", payload);
 }
 
-/** Crea billetera grupal: POST /createWallet con llaves en español */
+/** ---- Crear billetera grupal (ya lo tenías) ---- */
 export async function createGroupWallet(input: {
   name: string;
   description: string;
-  members: string[]; // direcciones
+  members: string[];
 }): Promise<{ id?: string; ok?: boolean }> {
   const payload = {
     miembros: input.members,
@@ -59,5 +86,6 @@ export async function createGroupWallet(input: {
   };
   return postJSON<{ id?: string; ok?: boolean }>("/createWallet", payload);
 }
+
 
 

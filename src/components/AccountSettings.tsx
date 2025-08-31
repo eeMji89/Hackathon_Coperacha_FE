@@ -1,73 +1,57 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
-import { Button } from "@/components/generated/ui/button";
-import { Input } from "@/components/generated/ui/input";
-import { Label } from "@/components/generated/ui/label";
-import { User, Phone, Wallet } from "lucide-react";
+
+"use client";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
+import { useUserProfile } from "@/hooks/useUserProfile";
+import { User, Phone, Mail } from "lucide-react";
 
 export function AccountSettings() {
-  const [name, setName] = useState("Juan Pérez");
-  const [phone, setPhone] = useState("+1 (555) 123-4567");
+  const { profile, loading, error } = useUserProfile();
+
+  const Row = ({
+    icon,
+    label,
+    value,
+  }: {
+    icon: React.ReactNode;
+    label: string;
+    value?: string;
+  }) => (
+    <div className="flex items-center justify-between rounded-lg border p-3">
+      <div className="flex items-center gap-3">
+        <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center">
+          {icon}
+        </div>
+        <div>
+          <p className="text-sm text-muted-foreground">{label}</p>
+          <p className="text-sm font-medium">{value && value.trim() ? value : "—"}</p>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h2 className="text-xl font-semibold">Configuración de Cuenta</h2>
-        <p className="text-muted-foreground">Gestiona tu información personal y billetera</p>
+        <p className="text-muted-foreground">Revisa tu información personal</p>
       </div>
 
-      {/* Personal Information */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <User className="h-5 w-5" />
-            Información Personal
-          </CardTitle>
-          <CardDescription>Actualiza tu nombre y número de teléfono</CardDescription>
+          <CardTitle>Información Personal</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Nombre Completo</Label>
-            <Input 
-              id="name" 
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="phone">Número de Teléfono</Label>
-            <Input 
-              id="phone" 
-              type="tel" 
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          </div>
+        <CardContent className="space-y-3">
+          {loading && <p className="text-sm text-muted-foreground">Cargando…</p>}
+          {error && <p className="text-sm text-red-600">Error: {error}</p>}
 
-          <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline">Cancelar</Button>
-            <Button>Guardar Cambios</Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Wallet Settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Wallet className="h-5 w-5" />
-            Configuración de Billetera
-          </CardTitle>
-          <CardDescription>Gestiona tus métodos de pago y billeteras digitales</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button className="w-full">
-            <Wallet className="h-4 w-4 mr-2" />
-            Cambiar Billetera
-          </Button>
+          {!loading && !error && (
+            <>
+              <Row icon={<User className="h-4 w-4" />} label="Nombre completo" value={profile.name} />
+              <Row icon={<Mail className="h-4 w-4" />} label="Correo" value={profile.email} />
+              <Row icon={<Phone className="h-4 w-4" />} label="Teléfono" value={profile.phone} />
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

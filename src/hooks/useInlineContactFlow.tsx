@@ -1,58 +1,39 @@
-/* eslint-disable react-hooks/rules-of-hooks */
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// src/hooks/useInlineContactFlow.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useWeb3Auth, useWeb3AuthUser } from "@web3auth/modal/react";
 import { useAccount } from "wagmi";
-import { getJSON, postJSON, patchJSON } from "@/lib/api";
-import type { Client } from "@/lib/types";
+import { createUser, getUserByWallet, BackendUser } from "@/lib/api";
 
 export type InlineContactPhase = "idle" | "checking" | "needsContact" | "ready" | "error";
 
 type Options = {
-  requireEmail?: boolean; // default true
-  requirePhone?: boolean; // default true
+  requireName?: boolean;
+  requireEmail?: boolean;
+  requirePhone?: boolean;
 };
 
-const REQUIRE_CONTACT = process.env.NEXT_PUBLIC_REQUIRE_CONTACT === "true";
-
 export function useInlineContactFlow(opts?: Options) {
+  const requireName = opts?.requireName ?? true;
   const requireEmail = opts?.requireEmail ?? true;
   const requirePhone = opts?.requirePhone ?? true;
 
-  const { status } = useWeb3Auth();              // "connected" | "connecting" | "disconnected"
+  const { status } = useWeb3Auth();
   const { getUserInfo } = useWeb3AuthUser();
   const { address, isConnected } = useAccount();
 
-  const [phase, setPhase] = useState<InlineContactPhase>("idle");
-  const [exists, setExists] = useState(false);
-  const [prefillEmail, setPrefillEmail] = useState("");
-  const [prefillPhone, setPrefillPhone] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
   const connected = status === "connected" && isConnected && !!address;
 
-  // ⬇️ si el feature está desactivado, no llames al backend ni muestres el form
-if (!REQUIRE_CONTACT) {
-  return {
-    phase: connected ? "ready" : "idle",
-    error: null,
-    connected,
-    address,
-    prefillEmail: "",
-    prefillPhone: "",
-    setPrefillEmail: () => {},
-    setPrefillPhone: () => {},
-    emailOk: true,
-    phoneOk: true,
-    saveContact: async () => {}, // no-op
-  };
-}
+  const [phase, setPhase] = useState<InlineContactPhase>("idle");
+  const [error, setError] = useState<string | null>(null);
+  const [exists, setExists] = useState(false);
 
-  
-  // boot: al conectarse, decide si falta info o está listo
-  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+
   useEffect(() => {
     let cancelled = false;
     if (!connected) {
@@ -64,57 +45,50 @@ if (!REQUIRE_CONTACT) {
       setPhase("checking");
       setError(null);
 
-      // 1) Trae datos del proveedor (OpenLogin)
+      // 1) Prefill desde Web3Auth
       const ui = (await getUserInfo().catch(() => ({}))) as any;
-      const emailFromProvider: string | undefined = ui?.email;
-      const phoneFromProvider: string | undefined = ui?.phoneNumber || ui?.phone;
+      const pName = ui?.name?.trim?.();
+      const pEmail = ui?.email?.trim?.();
+      const pPhone = ui?.phoneNumber || ui?.phone;
 
-      if (emailFromProvider) setPrefillEmail(emailFromProvider);
-      if (phoneFromProvider) setPrefillPhone(phoneFromProvider);
+      if (pName) setName(pName);
+      if (pEmail) setEmail(pEmail);
+      if (pPhone) setPhone(pPhone);
 
-      // 2) ¿Existe perfil en backend?
-      try {
-        const found = await getJSON<Client>(`/clients/wallet/${address}`);
-        if (!cancelled) {
-          setExists(true);
-          if (found?.email && !emailFromProvider) setPrefillEmail(found.email);
-          if (found?.phone && !phoneFromProvider) setPrefillPhone(found.phone ?? "");
-        }
+      // 2) Ver si ya existe en tu backend
+      const found: BackendUser | null = address ? await getUserByWallet(address) : null;
+      if (cancelled) return;
 
-        const needEmail = requireEmail && !(found?.email || emailFromProvider);
-        const needPhone = requirePhone && !(found?.phone || phoneFromProvider);
-
-        if (!cancelled) {
-          setPhase(needEmail || needPhone ? "needsContact" : "ready");
-        }
-        return;
-      } catch {
-        // 404 o backend no disponible
-        const canCreate =
-          (!requireEmail || !!emailFromProvider) &&
-          (!requirePhone || !!phoneFromProvider);
-
-        if (!cancelled) {
-          setExists(false);
-          setPhase(canCreate ? "ready" : "needsContact");
-        }
+      setExists(!!found);
+      if (found) {
+        if (found.nombre && !pName) setName(found.nombre);
+        if (found.correo && !pEmail) setEmail(found.correo);
+        if (found.celular && !pPhone) setPhone(found.celular);
       }
+
+      const needName = requireName && !(found?.nombre || pName);
+      const needEmail = requireEmail && !(found?.correo || pEmail);
+      const needPhone = requirePhone && !(found?.celular || pPhone);
+
+      setPhase(needName || needEmail || needPhone ? "needsContact" : "ready");
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [connected, address, getUserInfo, requireEmail, requirePhone]);
+  }, [connected, address, getUserInfo, requireName, requireEmail, requirePhone]);
 
-  // guardar (crear/actualizar) y marcar listo
-  const saveContact = async (email: string, phone: string) => {
+  const saveContact = async (nombre: string, correo: string, celular: string) => {
     if (!address) return;
     setError(null);
     try {
-      if (exists) {
-        await patchJSON<Client>(`/clients/${address}`, { email, phone });
-      } else {
-        await postJSON<Client>("/clients", { email, phone, wallet: address });
+      if (!exists) {
+        await createUser({
+          name: nombre,
+          email: correo,
+          phone: celular,
+          wallet: address,
+        });
       }
       setPhase("ready");
     } catch (e: any) {
@@ -123,32 +97,23 @@ if (!REQUIRE_CONTACT) {
     }
   };
 
+  // Validaciones simples
+  const nameOk = useMemo(() => !!name.trim(), [name]);
   const emailOk = useMemo(
-    () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(prefillEmail || ""),
-    [prefillEmail]
+    () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || ""),
+    [email]
   );
   const phoneOk = useMemo(
-    () => /^[0-9+\-\s()]{7,20}$/.test(prefillPhone || ""),
-    [prefillPhone]
+    () => /^[0-9+\-\s()]{7,20}$/.test(phone || ""),
+    [phone]
   );
 
   return {
-    phase,            // "idle" | "checking" | "needsContact" | "ready" | "error"
-    error,
-    connected,
-    address,
-
-    // valores a mostrar en el form
-    prefillEmail,
-    prefillPhone,
-    setPrefillEmail,
-    setPrefillPhone,
-
-    // validaciones simples
-    emailOk,
-    phoneOk,
-
-    // acción para guardar
+    phase, error, connected, exists,
+    name, setName, nameOk,
+    email, setEmail, emailOk,
+    phone, setPhone, phoneOk,
     saveContact,
   };
 }
+

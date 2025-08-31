@@ -1,10 +1,11 @@
+/* eslint-disable react-hooks/rules-of-hooks */
+
 "use client";
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useWeb3Auth } from "@web3auth/modal/react";
 import { useAccount } from "wagmi";
-// ⬇️ opcional: si estabas usando el flow inline, lo importas condicional
 import { useInlineContactFlow } from "@/hooks/useInlineContactFlow";
 import InlineContactForm from "@/components/InlineContactForm";
 
@@ -15,41 +16,50 @@ export default function LoginPage() {
   const { status } = useWeb3Auth();
   const { isConnected } = useAccount();
 
+  // Asegura que el contenedor del login modal esté visible
   useEffect(() => {
-  const el = document.getElementById("w3a-login");
-  if (el) el.classList.remove("hidden");
-  return () => { if (el) el.classList.add("hidden"); };
-}, []);
+    const el = document.getElementById("w3a-login");
+    if (el) el.classList.remove("hidden");
+    return () => { if (el) el.classList.add("hidden"); };
+  }, []);
 
+  // Hook de contacto (sólo si lo requerimos)
+  const inline = REQUIRE_CONTACT ? useInlineContactFlow() : null;
 
-  // 🔕 MODO APAGADO: si hay sesión, manda directo al dashboard
+  // Si NO requerimos contacto y ya hay sesión, directo al dashboard
   useEffect(() => {
     if (!REQUIRE_CONTACT && status === "connected" && isConnected) {
       router.replace("/dashboard");
     }
   }, [status, isConnected, router]);
 
-  // 🔔 MODO ENCENDIDO: mantén tu flow inline
-  const inline = REQUIRE_CONTACT
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    ? useInlineContactFlow()
-    : null;
+  // Si SÍ requerimos contacto: cuando queda listo => dashboard
+  useEffect(() => {
+    if (REQUIRE_CONTACT && inline?.phase === "ready") {
+      router.replace("/dashboard");
+    }
+  }, [inline?.phase, router]);
 
-  const showingForm = REQUIRE_CONTACT && inline?.connected && inline?.phase === "needsContact";
+  const showingForm =
+    REQUIRE_CONTACT && inline?.connected && inline?.phase === "needsContact";
 
   return (
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
       <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
         <div className="max-w-xl w-full mx-auto p-6 space-y-4">
+          {/* Web3Auth modal mountpoint */}
           <div id="w3a-login" style={{ display: showingForm ? "none" : "block" }} />
 
           {showingForm && inline && (
             <InlineContactForm
-              email={inline.prefillEmail}
-              phone={inline.prefillPhone}
-              setEmail={inline.setPrefillEmail}
-              setPhone={inline.setPrefillPhone}
+              name={inline.name}
+              setName={inline.setName}
+              nameOk={inline.nameOk}
+              email={inline.email}
+              setEmail={inline.setEmail}
               emailOk={inline.emailOk}
+              phone={inline.phone}
+              setPhone={inline.setPhone}
               phoneOk={inline.phoneOk}
               onSave={inline.saveContact}
               error={inline.error ?? undefined}
@@ -65,3 +75,4 @@ export default function LoginPage() {
     </div>
   );
 }
+

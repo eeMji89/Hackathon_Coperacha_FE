@@ -1,64 +1,80 @@
+
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { Label } from "@/ui/label";
-import { Badge } from "@/ui/badge";
-import { useState } from "react";
+import { Alert, AlertDescription } from "@/ui/alert";
 
 type Props = {
+  name: string;
+  setName: (v: string) => void;
+  nameOk: boolean;
+
   email: string;
-  phone: string;
   setEmail: (v: string) => void;
-  setPhone: (v: string) => void;
   emailOk: boolean;
+
+  phone: string;
+  setPhone: (v: string) => void;
   phoneOk: boolean;
-  onSave: (email: string, phone: string) => Promise<void> | void;
-  error?: string | null;
+
+  onSave: (nombre: string, correo: string, celular: string) => Promise<void>;
+  error?: string;
 };
 
 export default function InlineContactForm({
-  email, phone, setEmail, setPhone, emailOk, phoneOk, onSave, error
+  name, setName, nameOk,
+  email, setEmail, emailOk,
+  phone, setPhone, phoneOk,
+  onSave, error
 }: Props) {
   const [saving, setSaving] = useState(false);
 
-  const handleSave = async () => {
-    if (!emailOk || !phoneOk) return;
+  const canSave = nameOk && emailOk && phoneOk && !saving;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canSave) return;
     setSaving(true);
     try {
-      await onSave(email, phone);
+      await onSave(name.trim(), email.trim(), phone.trim());
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Card className="border-grey-300/50 bg-white-50 ">
-      <CardHeader className="flex flex-row items-center justify-between gap-2">
-        <CardTitle className="text-base">Completar datos de contacto</CardTitle>
-        <Badge variant="outline" className="text-xs">Acción requerida</Badge>
+    <Card className="w-full">
+      <CardHeader>
+        <CardTitle>Completa tus datos</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Para continuar, necesitamos tu <b>correo</b> y <b>teléfono</b>.
-        </p>
+      <CardContent>
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <div className="space-y-2">
+            <Label>Nombre</Label>
+            <Input
+              placeholder="Tu nombre completo"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            {!nameOk && <p className="text-xs text-red-600">Requerido</p>}
+          </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label>Email</Label>
+          <div className="space-y-2">
+            <Label>Correo</Label>
             <Input
               type="email"
               placeholder="tucorreo@dominio.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
-            {!emailOk && email.length > 0 && (
-              <p className="text-xs text-red-600">Formato de email no válido.</p>
-            )}
+            {!emailOk && <p className="text-xs text-red-600">Correo inválido</p>}
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label>Teléfono</Label>
             <Input
               type="tel"
@@ -66,21 +82,22 @@ export default function InlineContactForm({
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
             />
-            {!phoneOk && phone.length > 0 && (
-              <p className="text-xs text-red-600">Número de teléfono no válido.</p>
-            )}
+            {!phoneOk && <p className="text-xs text-red-600">Teléfono inválido</p>}
           </div>
-        </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
-        <div className="flex justify-end">
-          <Button onClick={handleSave} disabled={saving || !emailOk || !phoneOk}>
-            {saving ? "Guardando…" : "Guardar y continuar"}
+          <Button type="submit" className="w-full" disabled={!canSave}>
+            {saving ? "Guardando..." : "Guardar y continuar"}
           </Button>
-        </div>
+        </form>
       </CardContent>
     </Card>
   );
 }
+
 

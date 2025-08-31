@@ -1,27 +1,26 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/ui/table";
-
 import { Wallet, Copy, ExternalLink, ArrowUpRight, ArrowDownRight, Calendar, DollarSign } from "lucide-react";
 
 import { useWalletInfo } from "@/hooks/useWalletInfo";
-import { useProviderLabel } from "@/hooks/useProviderLabel";
+import { useEthPrice } from "@/hooks/useEthPrice";
 
 type TxType = "receive" | "send";
 type TxItem = {
   id: number;
   type: TxType;
-  amount: number;          // positivo (recibido) o negativo (enviado)
+  amount: number; // positivo (recibido) o negativo (enviado), en USD "mock" para UI
   from: string;
   to: string;
   hash: string;
-  date: string;            // ISO
+  date: string; // ISO
   description: string;
   status: "confirmado" | "pendiente" | "fallido";
 };
@@ -32,16 +31,30 @@ export function IndividualFundsView() {
   const {
     address,
     isConnected,
-    balance,
+    balance, // { formatted: string, symbol: "ETH" }
     ensName,
     explorerUrl,
     formatAddress,
     copyToClipboard,
   } = useWalletInfo();
 
-  const providerLabel = useProviderLabel();
+  // Precio ETH → HNL
+  const { rate: ethToHnl } = useEthPrice("HNL");
 
-  // ===== MOCK: historial de transacciones (en duro por ahora) =====
+  // ETH numérico (puede ser null si no hay balance)
+  const ethAmount = useMemo(() => {
+    if (!balance?.formatted) return null;
+    const n = Number(balance.formatted);
+    return Number.isFinite(n) ? n : null;
+  }, [balance]);
+
+  // Conversión a HNL
+  const hnlAmount = useMemo(() => {
+    if (ethAmount == null || ethToHnl == null) return null;
+    return ethAmount * ethToHnl;
+  }, [ethAmount, ethToHnl]);
+
+  // ===== MOCK: historial de transacciones (se deja como estaba) =====
   const transactionHistory: TxItem[] = [
     {
       id: 1,
@@ -101,8 +114,11 @@ export function IndividualFundsView() {
   ];
 
   // ===== Helpers UI =====
-  const formatCurrency = (amount: number) =>
+  const formatUSD = (amount: number) =>
     new Intl.NumberFormat("es-ES", { style: "currency", currency: "USD" }).format(Math.abs(amount));
+
+  const formatHNL = (amount: number) =>
+    new Intl.NumberFormat("es-HN", { style: "currency", currency: "HNL" }).format(amount);
 
   const getTransactionIcon = (type: TxType) => {
     switch (type) {
@@ -145,9 +161,6 @@ export function IndividualFundsView() {
               <div>
                 <CardTitle className="flex items-center gap-2">
                   Mi Billetera Principal
-                  <Badge variant="default" className="text-xs">
-                    {providerLabel}
-                  </Badge>
                 </CardTitle>
                 <CardDescription>
                   {ensName ? ensName : formatAddress(address)}
@@ -161,12 +174,15 @@ export function IndividualFundsView() {
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {/* Balance */}
+          {/* Balance (HNL grande, ETH chico) */}
           <div className="bg-gradient-to-r from-primary/5 to-primary/10 rounded-lg p-4">
             <div className="text-center">
               <p className="text-sm text-muted-foreground mb-1">Saldo Total</p>
               <p className="text-3xl font-bold text-primary">
-                {balance ? `${balance.formatted} ${balance.symbol}` : "—"}
+                {hnlAmount != null ? formatHNL(hnlAmount) : "—"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {ethAmount != null ? `≈ ${ethAmount.toFixed(4)} ETH` : ""}
               </p>
             </div>
           </div>
@@ -181,7 +197,13 @@ export function IndividualFundsView() {
                 </p>
               </div>
               <div className="flex gap-1">
-                <Button size="sm" variant="ghost" onClick={() => copyToClipboard(address || "")} disabled={!address}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => copyToClipboard(address || "")}
+                  disabled={!address}
+                  title="Copiar dirección"
+                >
                   <Copy className="h-3 w-3" />
                 </Button>
                 <Button
@@ -203,154 +225,147 @@ export function IndividualFundsView() {
                   <p className="text-xs text-muted-foreground">{ensName}</p>
                 </div>
                 <div className="flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => copyToClipboard(ensName)}>
+                  <Button size="sm" variant="ghost" onClick={() => copyToClipboard(ensName)} title="Copiar ENS">
                     <Copy className="h-3 w-3" />
                   </Button>
                 </div>
               </div>
             )}
-
-            <div className="flex items-center justify-between p-3 bg-card border border-border rounded-lg">
-              <div>
-                <p className="text-sm font-medium">Proveedor</p>
-                <p className="text-xs text-muted-foreground">{providerLabel}</p>
-              </div>
-              <Badge variant="outline" className="text-xs">
-                {isConnected ? "Conectado" : "Desconectado"}
-              </Badge>
-            </div>
+            {/* Se eliminó la sección de Proveedor */}
           </div>
 
           {/* Actions */}
           <div className="flex gap-2 pt-4">
-           <Dialog open={showTransactions} onOpenChange={setShowTransactions}>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="flex-1">Ver Transacciones</Button>
-            </DialogTrigger>
+            <Dialog open={showTransactions} onOpenChange={setShowTransactions}>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="flex-1">Ver Transacciones</Button>
+              </DialogTrigger>
 
-            {/* Modal ancho y alto acotados; SIN overflow en este nodo */}
-            <DialogContent className="w-[95vw] sm:max-w-[1000px] p-0">
-              {/* Grid de 3 filas: header / scroll-area / footer */}
-              <div className="grid grid-rows-[auto_minmax(0,1fr)_auto]">
-                {/* Header */}
-                <div className="p-4 border-b">
-                  <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                      <Wallet className="h-5 w-5" />
-                      Historial de Transacciones
-                    </DialogTitle>
-                    <DialogDescription className="text-left">
-                      Historial completo de las transacciones de tu billetera
-                    </DialogDescription>
-                  </DialogHeader>
+              {/* Modal ancho y alto acotados; SIN overflow en este nodo */}
+              <DialogContent className="w-[95vw] sm:max-w-[1000px] p-0">
+                {/* Grid de 3 filas: header / scroll-area / footer */}
+                <div className="grid grid-rows-[auto_minmax(0,1fr)_auto]">
+                  {/* Header */}
+                  <div className="p-4 border-b">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <Wallet className="h-5 w-5" />
+                        Historial de Transacciones
+                      </DialogTitle>
+                      <DialogDescription className="text-left">
+                        Historial completo de las transacciones de tu billetera
+                      </DialogDescription>
+                    </DialogHeader>
 
-                  {/* Resumen rápido */}
-                  <div className="bg-muted/50 rounded-lg p-3 mt-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium">Billetera</p>
-                        <p className="text-xs text-muted-foreground font-mono">
-                          {formatAddress(address)}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium">Saldo Actual</p>
-                        <p className="text-lg font-bold text-primary">
-                          {balance ? `${balance.formatted} ${balance.symbol}` : "—"}
-                        </p>
+                    {/* Resumen rápido */}
+                    <div className="bg-muted/50 rounded-lg p-3 mt-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium">Billetera</p>
+                          <p className="text-xs text-muted-foreground font-mono">
+                            {formatAddress(address)}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-medium">Saldo Actual</p>
+                          <p className="text-lg font-bold text-primary">
+                            {hnlAmount != null ? formatHNL(hnlAmount) : "—"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {ethAmount != null ? `≈ ${ethAmount.toFixed(4)} ETH` : ""}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Cuerpo scrolleable (vertical y horizontal) */}
-                <div className="overflow-auto p-4">
-                  <div className="overflow-auto">
-                    {/* min-w fuerza el scroll horizontal si falta ancho */}
-                    <Table className="min-w-[900px]">
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="whitespace-nowrap">Tipo</TableHead>
-                          <TableHead className="whitespace-nowrap">Monto</TableHead>
-                          <TableHead className="whitespace-nowrap">Dirección</TableHead>
-                          <TableHead className="whitespace-nowrap">Fecha</TableHead>
-                          <TableHead className="whitespace-nowrap">Estado</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {transactionHistory.map((tx) => (
-                          <TableRow key={tx.id}>
-                            <TableCell className="whitespace-nowrap">
-                              <div className="flex items-center gap-2">
-                                {getTransactionIcon(tx.type)}
-                                <div>
-                                  <p className="text-sm font-medium capitalize">
-                                    {tx.type === "receive" ? "Recibido" : "Enviado"}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">{tx.description}</p>
-                                </div>
-                              </div>
-                            </TableCell>
-
-                            <TableCell className={`whitespace-nowrap font-medium ${getTransactionColor(tx.type)}`}>
-                              {tx.type === "receive" ? "+" : ""}{formatCurrency(tx.amount)}
-                            </TableCell>
-
-                            <TableCell className="whitespace-nowrap">
-                              <div className="font-mono text-xs">
-                                <p className="text-muted-foreground">
-                                  {tx.type === "receive" ? "De:" : "A:"}{" "}
-                                  {formatAddress(tx.type === "receive" ? tx.from : tx.to)}
-                                </p>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-auto p-0 text-xs text-primary hover:no-underline"
-                                  onClick={() => copyToClipboard(tx.hash)}
-                                  title="Copiar hash"
-                                >
-                                  {formatAddress(tx.hash)}
-                                </Button>
-                              </div>
-                            </TableCell>
-
-                            <TableCell className="whitespace-nowrap">
-                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <Calendar className="h-3 w-3" />
-                                {new Date(tx.date).toLocaleDateString("es-ES", {
-                                  day: "2-digit",
-                                  month: "2-digit",
-                                  year: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
-                              </div>
-                            </TableCell>
-
-                            <TableCell className="whitespace-nowrap">
-                              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
-                                {tx.status}
-                              </Badge>
-                            </TableCell>
+                  {/* Cuerpo scrolleable (vertical y horizontal) */}
+                  <div className="overflow-auto p-4">
+                    <div className="overflow-auto">
+                      <Table className="min-w-[900px]">
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="whitespace-nowrap">Tipo</TableHead>
+                            <TableHead className="whitespace-nowrap">Monto</TableHead>
+                            <TableHead className="whitespace-nowrap">Dirección</TableHead>
+                            <TableHead className="whitespace-nowrap">Fecha</TableHead>
+                            <TableHead className="whitespace-nowrap">Estado</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {transactionHistory.map((tx) => (
+                            <TableRow key={tx.id}>
+                              <TableCell className="whitespace-nowrap">
+                                <div className="flex items-center gap-2">
+                                  {getTransactionIcon(tx.type)}
+                                  <div>
+                                    <p className="text-sm font-medium capitalize">
+                                      {tx.type === "receive" ? "Recibido" : "Enviado"}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">{tx.description}</p>
+                                  </div>
+                                </div>
+                              </TableCell>
+
+                              <TableCell className={`whitespace-nowrap font-medium ${getTransactionColor(tx.type)}`}>
+                                {tx.type === "receive" ? "+" : ""}
+                                {formatUSD(tx.amount)}
+                              </TableCell>
+
+                              <TableCell className="whitespace-nowrap">
+                                <div className="font-mono text-xs">
+                                  <p className="text-muted-foreground">
+                                    {tx.type === "receive" ? "De:" : "A:"}{" "}
+                                    {formatAddress(tx.type === "receive" ? tx.from : tx.to)}
+                                  </p>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-auto p-0 text-xs text-primary hover:no-underline"
+                                    onClick={() => copyToClipboard(tx.hash)}
+                                    title="Copiar hash"
+                                  >
+                                    {formatAddress(tx.hash)}
+                                  </Button>
+                                </div>
+                              </TableCell>
+
+                              <TableCell className="whitespace-nowrap">
+                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                  <Calendar className="h-3 w-3" />
+                                  {new Date(tx.date).toLocaleDateString("es-ES", {
+                                    day: "2-digit",
+                                    month: "2-digit",
+                                    year: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </div>
+                              </TableCell>
+
+                              <TableCell className="whitespace-nowrap">
+                                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                                  {tx.status}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+
+                  {/* Footer fijo */}
+                  <div className="p-4 border-t flex justify-end">
+                    <Button variant="outline" onClick={() => setShowTransactions(false)}>
+                      Cerrar
+                    </Button>
                   </div>
                 </div>
+              </DialogContent>
+            </Dialog>
 
-                {/* Footer fijo */}
-                <div className="p-4 border-t flex justify-end">
-                  <Button variant="outline" onClick={() => setShowTransactions(false)}>
-                    Cerrar
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-
-
-            {/* Si quieres mantener también el acceso directo al explorer: */}
+            {/* Acceso directo al explorer */}
             <Button
               className="flex-1"
               onClick={() => explorerUrl && window.open(explorerUrl, "_blank")}

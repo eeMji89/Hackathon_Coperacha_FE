@@ -240,7 +240,6 @@ export function useGroupsAndVotes() {
     getUserVote,
     isApproved,
     isRejected,
-    // nuevos:
     createGroup,
     createInviteVote,
     createFundRequestVote,
