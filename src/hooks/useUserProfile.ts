@@ -57,15 +57,20 @@ export function useUserProfile() {
           }
         }
 
-        // 2) Fallback: Web3Auth getUserInfo (si está conectado con Web3Auth)
+        // 2) Fallback: Web3Auth getUserInfo
         if (status === "connected") {
           try {
-            const ui = (await getUserInfo()) as any;
+            const ui = await getUserInfo() as {
+              name?: string;
+              email?: string;
+              phoneNumber?: string;
+              phone?: string;
+            };
             if (!cancelled && ui) {
               setProfile({
-                name: ui?.name ?? "",
-                email: ui?.email ?? "",
-                phone: ui?.phoneNumber ?? ui?.phone ?? "",
+                name: ui.name ?? "",
+                email: ui.email ?? "",
+                phone: ui.phoneNumber ?? ui.phone ?? "",
                 wallet: address ?? "",
               });
               setLoading(false);
@@ -76,7 +81,7 @@ export function useUserProfile() {
           }
         }
 
-        // 3) Último recurso: solo wallet si la hay
+        // 3) Último recurso: solo wallet
         if (!cancelled) {
           setProfile({
             name: "",
@@ -86,9 +91,9 @@ export function useUserProfile() {
           });
           setLoading(false);
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!cancelled) {
-          setError(e?.message || "No se pudo cargar el perfil");
+          setError(e instanceof Error ? e.message : "No se pudo cargar el perfil");
           setLoading(false);
         }
       }
@@ -97,7 +102,6 @@ export function useUserProfile() {
     if (isConnected || status === "connected") {
       load();
     } else {
-      // sin conexión, deja vacío
       setProfile({});
       setLoading(false);
     }

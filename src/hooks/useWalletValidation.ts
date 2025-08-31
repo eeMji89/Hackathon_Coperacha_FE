@@ -1,15 +1,23 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// src/hooks/useWalletValidation.ts
 "use client";
 
 import { useCallback, useState } from "react";
-import { validateWallet } from "@/lib/api";
+import { validateWallet } from "@/lib/api"; 
 import { isAddressish } from "@/hooks/useGroupsAndVotes";
 
-export type WalletValidationState = "idle" | "validating" | "valid" | "invalid" | "error";
+export type WalletValidationState =
+  | "idle"
+  | "validating"
+  | "valid"
+  | "invalid"
+  | "error";
 
 export function useWalletValidation(initial: string[] = [""]) {
   const [values, setValues] = useState<string[]>(initial);
-  const [state, setState] = useState<WalletValidationState[]>(initial.map(() => "idle"));
+  const [state, setState] = useState<WalletValidationState[]>(
+    initial.map(() => "idle")
+  );
   const [messages, setMessages] = useState<string[]>(initial.map(() => ""));
 
   const setAt = useCallback((i: number, val: string) => {
@@ -45,6 +53,8 @@ export function useWalletValidation(initial: string[] = [""]) {
   const validateOne = useCallback(
     async (i: number) => {
       const addr = values[i]?.trim();
+
+      // 1. Campo vacío
       if (!addr) {
         setState((s) => {
           const n = [...s];
@@ -58,6 +68,8 @@ export function useWalletValidation(initial: string[] = [""]) {
         });
         return false;
       }
+
+      // 2. Validación formato (ENS o 0x...)
       if (!isAddressish(addr)) {
         setState((s) => {
           const n = [...s];
@@ -71,13 +83,17 @@ export function useWalletValidation(initial: string[] = [""]) {
         });
         return false;
       }
+
+      // 3. Validación backend
       setState((s) => {
         const n = [...s];
         n[i] = "validating";
         return n;
       });
+
       try {
-        const exists = await validateWallet(addr);
+        const exists = await validateWallet(addr); // 👈 debe devolver true/false
+
         setState((s) => {
           const n = [...s];
           n[i] = exists ? "valid" : "invalid";
@@ -88,6 +104,7 @@ export function useWalletValidation(initial: string[] = [""]) {
           n[i] = exists ? "" : "No existe en el sistema";
           return n;
         });
+
         return !!exists;
       } catch (e: any) {
         setState((s) => {
@@ -112,11 +129,12 @@ export function useWalletValidation(initial: string[] = [""]) {
   }, [values, validateOne]);
 
   const nonEmptyCount = values.filter((v) => v.trim()).length;
+
   const allValidated =
     nonEmptyCount > 0 &&
     values.every((v, i) => v.trim() === "" || state[i] === "valid");
 
-  // 🔹 NUEVO: reset para limpiar todo a 1 input vacío en estado "idle"
+  // 🔹 Reset: limpia a 1 input vacío
   const reset = useCallback(() => {
     setValues([""]);
     setState(["idle"]);
@@ -134,7 +152,6 @@ export function useWalletValidation(initial: string[] = [""]) {
     validateAll,
     allValidated,
     nonEmptyCount,
-    reset, // ← úsalo desde tu vista
+    reset,
   };
 }
-

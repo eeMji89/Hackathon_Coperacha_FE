@@ -36,17 +36,24 @@ export default function LoginCard() {
   const [info, setInfo] = useState<MinimalAuthInfo | null>(null);
   const [sig, setSig] = useState("");
 
-  const handleConnect = async () => {
-    try {
-      await connect();                 // abre el modal
-      const ui = await getUserInfo();  // trae la info "completa"
-      setInfo(ui as MinimalAuthInfo);
-      router.push("/dashboard");
-    } catch (e) {
-      console.error(e);
-      alert("No se pudo iniciar sesión. Revisa la consola.");
-    }
-  };
+function isPopupClosedError(e: unknown) {
+  const msg = String((e as any)?.message || e || "").toLowerCase();
+  return (
+    msg.includes("popup has been closed") ||
+    msg.includes("wallet popup has been closed")
+  );
+}
+
+const handleConnect = async () => {
+  try {
+    await connect();                 // abre el modal
+    const ui = await getUserInfo();  // opcional
+    setInfo(ui as MinimalAuthInfo);
+    router.push("/dashboard");
+  } catch (e: any) {
+    if (isPopupClosedError(e)) return;            // <- SILENCIAR 5114
+    console.warn("Web3Auth connect() falló:", e); // usa warn, no error
+  }
 
   const handleDisconnect = async () => {
     await disconnect();
@@ -56,7 +63,9 @@ export default function LoginCard() {
 
   const handleSign = async () => {
     try {
-      const s = await signMessageAsync({ message: "Hola desde Web3Auth + Wagmi 👋" });
+      const s = await signMessageAsync({
+        message: "Hola desde Web3Auth + Wagmi 👋",
+      });
       setSig(s);
     } catch (e) {
       console.error(e);
@@ -67,7 +76,9 @@ export default function LoginCard() {
   // Si ya está conectado (p. ej. tras refresh) y aún no cargamos info, la pedimos.
   useEffect(() => {
     if (status === "connected" && !info) {
-      getUserInfo().then(ui => setInfo(ui as MinimalAuthInfo)).catch(() => {});
+      getUserInfo()
+        .then((ui) => setInfo(ui as MinimalAuthInfo))
+        .catch(() => {});
       router.replace("/dashboard");
     }
   }, [status, info, getUserInfo]);
@@ -90,11 +101,24 @@ export default function LoginCard() {
     <div className="w-full max-w-xl rounded-xl border p-4 flex flex-col gap-3">
       <h2 className="text-lg font-semibold">Sesión iniciada</h2>
       <div className="text-sm space-y-1">
-        <div><span className="font-medium">Conectado:</span> {String(isConnected)}</div>
-        <div><span className="font-medium">Address:</span> {address ?? "—"}</div>
-        <div><span className="font-medium">Login:</span> {info?.typeOfLogin ?? "—"}</div>
-        <div><span className="font-medium">Email:</span> {info?.email ?? "—"}</div>
-        {bal && <div><span className="font-medium">Balance:</span> {bal.formatted} {bal.symbol}</div>}
+        <div>
+          <span className="font-medium">Conectado:</span> {String(isConnected)}
+        </div>
+        <div>
+          <span className="font-medium">Address:</span> {address ?? "—"}
+        </div>
+        <div>
+          <span className="font-medium">Login:</span> {info?.typeOfLogin ?? "—"}
+        </div>
+        <div>
+          <span className="font-medium">Email:</span> {info?.email ?? "—"}
+        </div>
+        {bal && (
+          <div>
+            <span className="font-medium">Balance:</span> {bal.formatted}{" "}
+            {bal.symbol}
+          </div>
+        )}
       </div>
 
       <div className="flex gap-2">

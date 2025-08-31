@@ -1,46 +1,38 @@
 // src/lib/rest.ts
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+import axios, { AxiosRequestConfig } from "axios";
 
-function buildUrl(path: string) {
-  return path.startsWith("http")
-    ? path
-    : `${API_URL}${path.startsWith("/") ? "" : "/"}${path}`;
-}
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-async function handle<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    let msg = `${res.status} ${res.statusText}`;
-    try {
-      const j = await res.json();
-      if (j?.message) msg = j.message;
-    } catch {}
-    throw new Error(msg);
-  }
-  // @ts-expect-error (puede no tener body en 204)
-  return res.status === 204 ? undefined : (res.json() as Promise<T>);
-}
+// Cliente de axios
+const client = axios.create({
+  baseURL: API_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
 
-export async function getJSON<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(buildUrl(path), { ...init, method: "GET", cache: "no-store" });
-  return handle<T>(res);
-}
+// Wrapper de requests
+export const rest = {
+  get: async <T>(url: string, config?: AxiosRequestConfig): Promise<T> => {
+    const { data } = await client.get<T>(url, config);
+    return data;
+  },
+  post: async <T>(url: string, body?: any, config?: AxiosRequestConfig): Promise<T> => {
+    const { data } = await client.post<T>(url, body, config);
+    return data;
+  },
+  patch: async <T>(url: string, body?: any, config?: AxiosRequestConfig): Promise<T> => {
+    const { data } = await client.patch<T>(url, body, config);
+    return data;
+  },
+  delete: async <T>(url: string, config?: AxiosRequestConfig): Promise<T> => {
+    const { data } = await client.delete<T>(url, config);
+    return data;
+  },
+};
 
-export async function postJSON<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {
-  const res = await fetch(buildUrl(path), {
-    ...init,
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
-    body: JSON.stringify(body),
-  });
-  return handle<T>(res);
-}
-
-export async function patchJSON<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {
-  const res = await fetch(buildUrl(path), {
-    ...init,
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
-    body: JSON.stringify(body),
-  });
-  return handle<T>(res);
-}
+// 👇 Alias más legibles (opcional)
+export const getJSON = rest.get;
+export const postJSON = rest.post;
+export const patchJSON = rest.patch;
+export const deleteJSON = rest.delete;

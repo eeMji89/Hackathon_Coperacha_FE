@@ -6,9 +6,10 @@ import { useAccount, useBalance, useEnsName, useChainId } from "wagmi";
 export function useWalletInfo() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
-
+  console.log("aaaaaaaaaaaaaaaa: ",address)
   const { data: balance } = useBalance({
     address: address as `0x${string}` | undefined,
+    chainId: 421614, // Arbitrum Sepolia
     query: { enabled: !!address },
   });
 
@@ -20,7 +21,7 @@ export function useWalletInfo() {
   });
 
   const explorerBaseByChain: Record<number, string> = {
-    1: "https://etherscan.io",
+    1: "https://sepolia.arbiscan.io/",
     137: "https://polygonscan.com",
     8453: "https://basescan.org",
     10: "https://optimistic.etherscan.io",
@@ -30,7 +31,7 @@ export function useWalletInfo() {
 
   const explorerUrl = useMemo(() => {
     if (!address) return undefined;
-    const base = explorerBaseByChain[chainId] ?? "https://etherscan.io";
+    const base = explorerBaseByChain[chainId] ?? "https://sepolia.arbiscan.io/";
     return `${base}/address/${address}`;
   }, [address, chainId]);
 

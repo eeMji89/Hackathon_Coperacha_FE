@@ -1,16 +1,45 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useState, useMemo } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
+import { useState, useMemo, useEffect } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/ui/card";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/ui/table";
-import { Wallet, Copy, ExternalLink, ArrowUpRight, ArrowDownRight, Calendar, DollarSign } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/ui/table";
+import {
+  Wallet,
+  Copy,
+  ExternalLink,
+  ArrowUpRight,
+  ArrowDownRight,
+  Calendar,
+  DollarSign,
+} from "lucide-react";
 
 import { useWalletInfo } from "@/hooks/useWalletInfo";
 import { useEthPrice } from "@/hooks/useEthPrice";
+import { getSaldos } from "@/lib/api";
 
 type TxType = "receive" | "send";
 type TxItem = {
@@ -115,10 +144,16 @@ export function IndividualFundsView() {
 
   // ===== Helpers UI =====
   const formatUSD = (amount: number) =>
-    new Intl.NumberFormat("es-ES", { style: "currency", currency: "USD" }).format(Math.abs(amount));
+    new Intl.NumberFormat("es-ES", {
+      style: "currency",
+      currency: "USD",
+    }).format(Math.abs(amount));
 
   const formatHNL = (amount: number) =>
-    new Intl.NumberFormat("es-HN", { style: "currency", currency: "HNL" }).format(amount);
+    new Intl.NumberFormat("es-HN", {
+      style: "currency",
+      currency: "HNL",
+    }).format(amount);
 
   const getTransactionIcon = (type: TxType) => {
     switch (type) {
@@ -131,6 +166,16 @@ export function IndividualFundsView() {
     }
   };
 
+  const fmtHNL = (n: number | null | undefined) =>
+  typeof n === "number" && !Number.isNaN(n)
+    ? n.toLocaleString(undefined, { maximumFractionDigits: 2 })
+    : "--";
+
+const fmtETH = (n: number | null | undefined) =>
+  typeof n === "number" && !Number.isNaN(n)
+    ? n.toLocaleString(undefined, { maximumFractionDigits: 6 })
+    : "--";
+
   const getTransactionColor = (type: TxType) => {
     switch (type) {
       case "receive":
@@ -142,12 +187,71 @@ export function IndividualFundsView() {
     }
   };
 
+  const [fiHNL, setFiHNL] = useState<number | null>(null);
+  const [fiETH, setFiETH] = useState<number>(0);
+  const [cgHNL, setCgHNL] = useState<number | null>(null);
+  const [cgETH, setCgETH] = useState<number>(0);
+
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const totalHNL = useMemo(() => (fiHNL ?? 0) + (cgHNL ?? 0), [fiHNL, cgHNL]);
+  const totalETH = useMemo(() => (fiETH || 0) + (cgETH || 0), [fiETH, cgETH]);
+
+  const toNum = (x: unknown) => {
+    const n = parseFloat(String(x ?? ""));
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  useEffect(() => {
+    let cancel = false;
+    const run = async () => {
+      if (!isConnected || !address) return;
+      setLoading(true);
+      setErr(null);
+      try {
+        const data = await getSaldos(address); // <- usa ?wallet=
+        if (cancel) return;
+
+        // Mapea campos del BE
+        const _fiETH = toNum(data.balanceWalletETH);
+        const _fiHNL = toNum(data.balanceWalletHNL);
+        const _cgETH = toNum(data.totalComunitarioETH);
+        const _cgHNL = toNum(data.totalComunitarioHNL);
+
+        setFiETH(_fiETH);
+        setFiHNL(_fiHNL);
+        setCgETH(_cgETH);
+        setCgHNL(_cgHNL);
+      } catch (e: any) {
+        if (!cancel) setErr(e?.message || "No se pudo obtener /Saldos");
+      } finally {
+        if (!cancel) setLoading(false);
+      }
+    };
+    run();
+    return () => {
+      cancel = true;
+    };
+  }, [isConnected, address]);
+
+  const renderAmount = (hnl: number | null, eth: number) => (
+    <div>
+      <div className="text-2xl font-bold">L {fmtHNL(hnl)}</div>
+      <div className="text-xs text-muted-foreground mt-0.5">
+        {fmtETH(eth)} ETH
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
         <h2 className="text-xl font-semibold">Fondos Individuales</h2>
-        <p className="text-muted-foreground">Gestiona tu billetera personal de inversión</p>
+        <p className="text-muted-foreground">
+          Gestiona tu billetera personal de inversión
+        </p>
       </div>
 
       {/* Wallet Card */}
@@ -179,7 +283,11 @@ export function IndividualFundsView() {
             <div className="text-center">
               <p className="text-sm text-muted-foreground mb-1">Saldo Total</p>
               <p className="text-3xl font-bold text-primary">
-                {hnlAmount != null ? formatHNL(hnlAmount) : "—"}
+                {loading ? (
+                  <div className="text-sm text-muted-foreground">Cargando…</div>
+                ) : (
+                  renderAmount(totalHNL, totalETH)
+                )}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 {ethAmount != null ? `≈ ${ethAmount.toFixed(4)} ETH` : ""}
@@ -209,7 +317,9 @@ export function IndividualFundsView() {
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => explorerUrl && window.open(explorerUrl, "_blank")}
+                  onClick={() =>
+                    explorerUrl && window.open(explorerUrl, "_blank")
+                  }
                   disabled={!explorerUrl}
                   title="Abrir en explorer"
                 >
@@ -225,7 +335,12 @@ export function IndividualFundsView() {
                   <p className="text-xs text-muted-foreground">{ensName}</p>
                 </div>
                 <div className="flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => copyToClipboard(ensName)} title="Copiar ENS">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => copyToClipboard(ensName)}
+                    title="Copiar ENS"
+                  >
                     <Copy className="h-3 w-3" />
                   </Button>
                 </div>
@@ -238,7 +353,9 @@ export function IndividualFundsView() {
           <div className="flex gap-2 pt-4">
             <Dialog open={showTransactions} onOpenChange={setShowTransactions}>
               <DialogTrigger asChild>
-                <Button variant="outline" className="flex-1">Ver Transacciones</Button>
+                <Button variant="outline" className="flex-1">
+                  Ver Transacciones
+                </Button>
               </DialogTrigger>
 
               {/* Modal ancho y alto acotados; SIN overflow en este nodo */}
@@ -272,7 +389,9 @@ export function IndividualFundsView() {
                             {hnlAmount != null ? formatHNL(hnlAmount) : "—"}
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            {ethAmount != null ? `≈ ${ethAmount.toFixed(4)} ETH` : ""}
+                            {ethAmount != null
+                              ? `≈ ${ethAmount.toFixed(4)} ETH`
+                              : ""}
                           </p>
                         </div>
                       </div>
@@ -285,11 +404,21 @@ export function IndividualFundsView() {
                       <Table className="min-w-[900px]">
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="whitespace-nowrap">Tipo</TableHead>
-                            <TableHead className="whitespace-nowrap">Monto</TableHead>
-                            <TableHead className="whitespace-nowrap">Dirección</TableHead>
-                            <TableHead className="whitespace-nowrap">Fecha</TableHead>
-                            <TableHead className="whitespace-nowrap">Estado</TableHead>
+                            <TableHead className="whitespace-nowrap">
+                              Tipo
+                            </TableHead>
+                            <TableHead className="whitespace-nowrap">
+                              Monto
+                            </TableHead>
+                            <TableHead className="whitespace-nowrap">
+                              Dirección
+                            </TableHead>
+                            <TableHead className="whitespace-nowrap">
+                              Fecha
+                            </TableHead>
+                            <TableHead className="whitespace-nowrap">
+                              Estado
+                            </TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -300,14 +429,22 @@ export function IndividualFundsView() {
                                   {getTransactionIcon(tx.type)}
                                   <div>
                                     <p className="text-sm font-medium capitalize">
-                                      {tx.type === "receive" ? "Recibido" : "Enviado"}
+                                      {tx.type === "receive"
+                                        ? "Recibido"
+                                        : "Enviado"}
                                     </p>
-                                    <p className="text-xs text-muted-foreground">{tx.description}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {tx.description}
+                                    </p>
                                   </div>
                                 </div>
                               </TableCell>
 
-                              <TableCell className={`whitespace-nowrap font-medium ${getTransactionColor(tx.type)}`}>
+                              <TableCell
+                                className={`whitespace-nowrap font-medium ${getTransactionColor(
+                                  tx.type
+                                )}`}
+                              >
                                 {tx.type === "receive" ? "+" : ""}
                                 {formatUSD(tx.amount)}
                               </TableCell>
@@ -316,7 +453,9 @@ export function IndividualFundsView() {
                                 <div className="font-mono text-xs">
                                   <p className="text-muted-foreground">
                                     {tx.type === "receive" ? "De:" : "A:"}{" "}
-                                    {formatAddress(tx.type === "receive" ? tx.from : tx.to)}
+                                    {formatAddress(
+                                      tx.type === "receive" ? tx.from : tx.to
+                                    )}
                                   </p>
                                   <Button
                                     variant="ghost"
@@ -333,18 +472,24 @@ export function IndividualFundsView() {
                               <TableCell className="whitespace-nowrap">
                                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                   <Calendar className="h-3 w-3" />
-                                  {new Date(tx.date).toLocaleDateString("es-ES", {
-                                    day: "2-digit",
-                                    month: "2-digit",
-                                    year: "numeric",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}
+                                  {new Date(tx.date).toLocaleDateString(
+                                    "es-ES",
+                                    {
+                                      day: "2-digit",
+                                      month: "2-digit",
+                                      year: "numeric",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    }
+                                  )}
                                 </div>
                               </TableCell>
 
                               <TableCell className="whitespace-nowrap">
-                                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                                <Badge
+                                  variant="outline"
+                                  className="text-xs bg-green-50 text-green-700 border-green-200"
+                                >
                                   {tx.status}
                                 </Badge>
                               </TableCell>
@@ -357,7 +502,10 @@ export function IndividualFundsView() {
 
                   {/* Footer fijo */}
                   <div className="p-4 border-t flex justify-end">
-                    <Button variant="outline" onClick={() => setShowTransactions(false)}>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowTransactions(false)}
+                    >
                       Cerrar
                     </Button>
                   </div>

@@ -1,91 +1,100 @@
-// src/lib/api.ts
-import { getJSON, postJSON } from "@/lib/rest";
+import { rest } from "./rest";
 
-/** ==== Tipos de backend ==== */
-export type BackendUser = {
-  _id?: string;
-  nombre: string;
+// ==== Usuarios ====
+export const createUser = (data: {
   correo: string;
+  nombre: string;
   celular: string;
   billetera: string;
-};
+}) => rest.post("/createUser", data);
 
-/** ---- Validación de wallet (ya lo tenías) ---- */
-export async function validateWallet(address: string): Promise<boolean> {
-  try {
-    const res = await getJSON<{ exists: boolean }>(
-      `/wallets/validate?address=${encodeURIComponent(address)}`
-    );
-    return !!res?.exists;
-  } catch {
-    const hex42 = /^0x[a-fA-F0-9]{40}$/;
-    const ens = /^[a-z0-9-]+\.eth$/i;
-    return hex42.test(address) || ens.test(address);
-  }
-}
+export const getUsers = () => rest.get("/users");
+export const getUserByEmail = (correo: string) =>
+  rest.get(`/users/email/${correo}`);
+export const getUserByPhone = (celular: string) =>
+  rest.get(`/users/phone/${celular}`);
+export const getUserByWallet = (billetera: string) =>
+  rest.get(`/users/wallet/${billetera}`);
 
-/** ---- Lecturas de usuario ---- */
-export async function getUserByWallet(wallet: string): Promise<BackendUser | null> {
-  try {
-    return await getJSON<BackendUser>(`/users/wallet/${wallet}`);
-  } catch {
-    return null; // 404 u otro error => tratamos como no existe
-  }
-}
-
-export async function getUserByEmail(correo: string): Promise<BackendUser | null> {
-  try {
-    return await getJSON<BackendUser>(`/users/email/${encodeURIComponent(correo)}`);
-  } catch {
-    return null;
-  }
-}
-
-export async function getUserByPhone(celular: string): Promise<BackendUser | null> {
-  try {
-    return await getJSON<BackendUser>(`/users/phone/${encodeURIComponent(celular)}`);
-  } catch {
-    return null;
-  }
-}
-
-/** ---- Crear usuario (ya lo tenías) ---- */
-export type CreateUserBackendBody = {
+// ==== Wallet Comunitaria ====
+export const createWallet = (payload: {
+  miembros: string[];
+  creador: string;
   nombre: string;
-  correo: string;
-  celular: string;
-  billetera: string;
+  descripcion: string;
+}) => rest.post("/createWallet", payload);
+
+export const getWallets = () => rest.get<{ wallets: string[] }>("/wallets");
+export const getWalletUsers = (walletAddress: string) =>
+  rest.get(`/wallets/${walletAddress}/users`);
+
+// ==== Propuestas ====
+export const proponerGasto = (payload: {
+  walletAddress: string;
+  destinatario: string;
+  descripcion: string;
+  miembro: string;
+  monto: number;
+  unidad: string;
+}) => rest.post("/proponerGasto", payload);
+
+export const proponerMiembro = (payload: {
+  walletAddress: string;
+  nuevoMiembro: string;
+  descripcion: string;
+  miembro: string;
+}) => rest.post("/proponerMiembro", payload);
+
+export const votarPropuesta = (
+  walletAddress: string,
+  payload: { idPropuesta: number; miembro: string }
+) => rest.post(`/wallets/${walletAddress}/votar`, payload);
+
+// ==== Validaciones ====
+/**
+ * Verifica si una wallet está registrada en el backend
+ * usa GET /walletRegistrada?wallet=0x123...
+ */
+export const validateWallet = async (wallet: string): Promise<boolean> => {
+  const res = await rest.get<{ registrada: boolean }>(
+    `/walletRegistrada?wallet=${wallet}`
+  );
+  return res.registrada;
 };
-export type CreateUserResponse = { ok?: boolean; id?: string };
 
-export async function createUser(input: {
-  name: string;
-  email: string;
-  phone: string;
-  wallet: string;
-}): Promise<CreateUserResponse> {
-  const payload: CreateUserBackendBody = {
-    nombre: input.name,
-    correo: input.email,
-    celular: input.phone,
-    billetera: input.wallet,
-  };
-  return postJSON<CreateUserResponse>("/createUser", payload);
-}
+// ==== Saldos / Finanzas ====
+export type SaldosResponse = {
+  balanceWalletETH: string;        // ETH del usuario (decimal string)
+  balanceWalletHNL: string | number;
+  totalComunitarioETH: string;     // ETH comunitario (decimal string)
+  totalComunitarioHNL: string | number;
+};
 
-/** ---- Crear billetera grupal (ya lo tenías) ---- */
-export async function createGroupWallet(input: {
-  name: string;
-  description: string;
-  members: string[];
-}): Promise<{ id?: string; ok?: boolean }> {
-  const payload = {
-    miembros: input.members,
-    nombre: input.name,
-    descripcion: input.description,
-  };
-  return postJSON<{ id?: string; ok?: boolean }>("/createWallet", payload);
-}
+export const getSaldos = (wallet: string) =>
+  rest.get<SaldosResponse>(`/Saldos?wallet=${wallet}`);
 
 
 
+export const getTxsPersonales = (address: string, limit = 6) =>
+  rest.get(`/wallets/personal/${address}/txs?limit=${limit}`);
+
+export const getAportes = (walletAddress: string) =>
+  rest.get(`/wallets/${walletAddress}/aportes`);
+
+export const getHistorialPropuestas = (walletAddress: string) =>
+  rest.get(`/wallets/${walletAddress}/propuestas-historial`);
+
+export const getDashboard = (walletAddress: string) =>
+  rest.get<{
+    walletAddress: string;
+    saldo: number;
+    miembros: { address: string; nombre?: string; aporte?: number }[];
+    propuestas: any[];
+    topAportes: any[];
+    ultimasTx: any[];
+  }>(`/wallets/${walletAddress}/dashboard`);
+
+// ==== Configuración ====
+export const getExchangeRate = () => rest.get(`/config/exchange-rate`);
+export const setExchangeRate = (ethToHnl: number) =>
+  rest.post(`/config/exchange-rate`, { ethToHnl });

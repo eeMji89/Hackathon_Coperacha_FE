@@ -16,20 +16,19 @@ export default function LoginPage() {
   const { status } = useWeb3Auth();
   const { isConnected } = useAccount();
 
-const inline = REQUIRE_CONTACT ? useInlineContactFlow() : null;
-  const showingForm = REQUIRE_CONTACT && inline?.connected && inline?.phase === "needsContact";
+  const inline = REQUIRE_CONTACT ? useInlineContactFlow() : null;
+  const showingForm =
+    REQUIRE_CONTACT && inline?.connected && inline?.phase === "needsContact";
 
   // Mostrar/ocultar overlay centrado
   useEffect(() => {
     const wrap = document.getElementById("w3a-login-wrap");
     if (!wrap) return;
-
-    // Muestra el modal de web3auth cuando NO estás mostrando el formulario de contacto
-    wrap.classList.toggle("hidden", !!showingForm);
-
-    // Limpia al salir de la página
-    return () => { wrap.classList.add("hidden"); };
-  }, [showingForm]);
+    wrap.classList.remove("hidden"); // mostrar contenedor
+    return () => {
+      wrap.classList.add("hidden");
+    }; // ocultar al salir
+  }, []);
 
   // Si NO requerimos contacto y ya hay sesión → dashboard
   useEffect(() => {
@@ -67,13 +66,16 @@ const inline = REQUIRE_CONTACT ? useInlineContactFlow() : null;
             />
           )}
 
-          {REQUIRE_CONTACT && inline?.connected && inline?.phase === "checking" && (
-            <p className="text-sm text-muted-foreground">Procesando sesión…</p>
-          )}
+          {REQUIRE_CONTACT &&
+            inline?.connected &&
+            inline?.phase === "checking" && (
+              <p className="text-sm text-muted-foreground">
+                Procesando sesión…
+              </p>
+            )}
         </div>
       </main>
       <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center" />
     </div>
   );
 }
-
