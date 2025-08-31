@@ -34,7 +34,7 @@ export default function InlineContactForm({
   };
 
   return (
-    <Card className="border-yellow-300/50 bg-yellow-50 dark:bg-yellow-900/10">
+    <Card className="border-grey-300/50 bg-white-50 ">
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle className="text-base">Completar datos de contacto</CardTitle>
         <Badge variant="outline" className="text-xs">Acción requerida</Badge>

@@ -1,41 +1,63 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000";
+// src/lib/api.ts
+import { getJSON, postJSON } from "@/lib/rest";
 
-function buildUrl(path: string) {
-  return path.startsWith("http") ? path : `${API_URL}${path.startsWith("/") ? "" : "/"}${path}`;
-}
-
-export async function getJSON<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(buildUrl(path), { ...init, method: "GET", cache: "no-store" });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  return res.json() as Promise<T>;
-}
-
-export async function postJSON<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {
-  const res = await fetch(buildUrl(path), {
-    ...init,
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    let msg = `${res.status} ${res.statusText}`;
-    try { const j = await res.json(); if (j?.message) msg = j.message; } catch {}
-    throw new Error(msg);
+/** ---- Validación de wallet (ajusta la ruta si tu backend usa otra) ---- */
+export async function validateWallet(address: string): Promise<boolean> {
+  try {
+    const res = await getJSON<{ exists: boolean }>(
+      `/wallets/validate?address=${encodeURIComponent(address)}`
+    );
+    return !!res?.exists;
+  } catch {
+    // fallback dev: pasa si parece dirección o ENS
+    const hex42 = /^0x[a-fA-F0-9]{40}$/;
+    const ens = /^[a-z0-9-]+\.eth$/i;
+    return hex42.test(address) || ens.test(address);
   }
-  return res.json() as Promise<T>;
 }
 
-export async function patchJSON<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {
-  const res = await fetch(buildUrl(path), {
-    ...init,
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    let msg = `${res.status} ${res.statusText}`;
-    try { const j = await res.json(); if (j?.message) msg = j.message; } catch {}
-    throw new Error(msg);
-  }
-  return res.json() as Promise<T>;
+/** ---- Crear usuario: POST /createUser con llaves en español ---- */
+export type CreateUserBackendBody = {
+  nombre: string;
+  correo: string;
+  celular: string;
+  billetera: string;
+};
+
+// Si tu backend devuelve el usuario creado, tipéalo aquí:
+export type CreateUserResponse = {
+  ok?: boolean;
+  id?: string;
+  // ...otros campos que devuelva tu API
+};
+
+export async function createUser(input: {
+  name: string;
+  email: string;
+  phone: string;
+  wallet: string;
+}): Promise<CreateUserResponse> {
+  const payload: CreateUserBackendBody = {
+    nombre: input.name,
+    correo: input.email,
+    celular: input.phone,
+    billetera: input.wallet,
+  };
+  return postJSON<CreateUserResponse>("/createUser", payload);
 }
+
+/** Crea billetera grupal: POST /createWallet con llaves en español */
+export async function createGroupWallet(input: {
+  name: string;
+  description: string;
+  members: string[]; // direcciones
+}): Promise<{ id?: string; ok?: boolean }> {
+  const payload = {
+    miembros: input.members,
+    nombre: input.name,
+    descripcion: input.description,
+  };
+  return postJSON<{ id?: string; ok?: boolean }>("/createWallet", payload);
+}
+
+

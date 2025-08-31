@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useAccount } from "wagmi";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
@@ -11,369 +12,301 @@ import { Input } from "@/ui/input";
 import { Label } from "@/ui/label";
 import { Textarea } from "@/ui/textarea";
 import { Avatar, AvatarFallback } from "@/ui/avatar";
-import { Progress } from "@/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/ui/select";
 import { Alert, AlertDescription } from "@/ui/alert";
+import { Progress } from "@/ui/progress";
 import {
-  Plus, Users, Eye, UserPlus, DollarSign, Clock, ThumbsUp, ThumbsDown, Vote as VoteIcon,
-  ArrowUpRight, ArrowDownRight, Calendar
+  Plus, Users, Eye, UserPlus, DollarSign, Clock,Check, Loader2,  Trash2,
+  ThumbsUp, ThumbsDown, Vote as VoteIcon, ArrowUpRight, ArrowDownRight, Calendar
 } from "lucide-react";
 
-// ========== Tipos ==========
+import { createGroupWallet } from "@/lib/api";
+
+import MemberWalletInputs from "@/components/MemberWalletInputs";
+import { useWalletValidation } from "@/hooks/useWalletValidation";
+
+import { useGroupsAndVotes, isAddressish, short } from "@/hooks/useGroupsAndVotes";
+import type { Group, TransactionType, ActiveVote } from "@/lib/types";
+
+// Usuario actual (mock por ahora)
 const currentUser = "Juan Pérez";
 
-type Member = { name: string; initials: string; contribution: number };
-
-type TransactionType = "contribution" | "withdrawal" | "dividend" | "fee";
-type Transaction = {
-  id: number;
-  type: TransactionType;
-  amount: number;   // positivo o negativo
-  date: string;     // ISO o YYYY-MM-DD
-  member: string;   // quién hizo la acción
-  description: string;
-};
-
-type GroupStatus = "Activo" | "Pendiente" | "Inactivo";
-type Group = {
-  id: number;
-  name: string;
-  balance: number;
-  goal: number;
-  members: Member[];
-  created: string;
-  status: GroupStatus;
-  description: string;
-  transactions: Transaction[];
-};
-
-type VoteChoice = "yes" | "no";
-type VoteRecord = { member: string; vote: VoteChoice; timestamp: string };
-
-type BaseVote = {
-  id: number;
-  groupId: number;
-  title: string;
-  description: string;
-  initiatedBy: string;
-  dateInitiated: string; // ISO
-  deadline: string;      // ISO o YYYY-MM-DD
-  requiredVotes: number;
-  votes: VoteRecord[];
-};
-
-type InviteVote = BaseVote & {
-  type: "invite";
-  details: { phoneNumber: string; message?: string };
-};
-
-type FundRequestVote = BaseVote & {
-  type: "fund_request";
-  details: { amount: number; purpose: string; notes?: string };
-};
-
-type ActiveVote = InviteVote | FundRequestVote;
-
-// Nota: CompletedVote hereda de Invite/Fund => mantiene deadline/requiredVotes
-type CompletedVote = (InviteVote | FundRequestVote) & {
-  dateCompleted: string;
-  result: "approved" | "rejected";
-};
-
-// ========== Datos mock ==========
-const groupAccounts: Group[] = [
-  {
-    id: 1,
-    name: "Alpha Investment Group",
-    balance: 650000,
-    goal: 1000000,
-    members: [
-      { name: "Juan Pérez", initials: "JP", contribution: 45 },
-      { name: "Sarah Wilson", initials: "SW", contribution: 30 },
-      { name: "Mike Johnson", initials: "MJ", contribution: 25 },
-    ],
-    created: "2023-01-15",
-    status: "Activo",
-    description: "Conservative growth portfolio for long-term stability",
-    transactions: [
-      { id: 1, type: "contribution", amount: 15000, date: "2024-01-15", member: "Juan Pérez", description: "Contribución mensual del grupo" },
-      { id: 2, type: "dividend", amount: 8500, date: "2024-01-12", member: "Sistema", description: "Distribución de dividendos trimestral" },
-      { id: 3, type: "withdrawal", amount: -25000, date: "2024-01-10", member: "Sarah Wilson", description: "Solicitud de fondos aprobada - gastos médicos" },
-      { id: 4, type: "contribution", amount: 22000, date: "2024-01-08", member: "Mike Johnson", description: "Inversión adicional" },
-    ],
-  },
-  {
-    id: 2,
-    name: "Beta Growth Fund",
-    balance: 350000,
-    goal: 750000,
-    members: [
-      { name: "John Doe", initials: "JD", contribution: 50 },
-      { name: "Lisa Chen", initials: "LC", contribution: 30 },
-      { name: "Tom Brown", initials: "TB", contribution: 20 },
-    ],
-    created: "2023-03-20",
-    status: "Activo",
-    description: "High-growth technology focused investment group",
-    transactions: [
-      { id: 1, type: "contribution", amount: 12000, date: "2024-01-14", member: "Lisa Chen", description: "Weekly contribution" },
-      { id: 2, type: "fee", amount: -250, date: "2024-01-11", member: "System", description: "Management fee" },
-      { id: 3, type: "contribution", amount: 18000, date: "2024-01-09", member: "John Doe", description: "Growth investment" },
-    ],
-  },
-  {
-    id: 3,
-    name: "Retirement Planning Pool",
-    balance: 890000,
-    goal: 1200000,
-    members: [
-      { name: "John Doe", initials: "JD", contribution: 20 },
-      { name: "Robert Davis", initials: "RD", contribution: 35 },
-      { name: "Emma White", initials: "EW", contribution: 25 },
-      { name: "James Wilson", initials: "JW", contribution: 20 },
-    ],
-    created: "2022-11-10",
-    status: "Activo",
-    description: "Long-term retirement focused conservative fund",
-    transactions: [
-      { id: 1, type: "contribution", amount: 35000, date: "2024-01-16", member: "Robert Davis", description: "Monthly retirement contribution" },
-      { id: 2, type: "dividend", amount: 12000, date: "2024-01-13", member: "System", description: "Bond interest payout" },
-      { id: 3, type: "contribution", amount: 18000, date: "2024-01-10", member: "Emma White", description: "Regular contribution" },
-    ],
-  },
-];
-
-const activeVotes: ActiveVote[] = [
-  {
-    id: 1,
-    groupId: 1,
-    type: "invite",
-    title: "Invite Alex Johnson",
-    description: "Invite Alex Johnson (+1 555-0123) to join Alpha Investment Group",
-    initiatedBy: "John Doe",
-    dateInitiated: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(), // 12h atrás
-    deadline: "2024-01-22",
-    requiredVotes: 2,
-    votes: [
-      { member: "John Doe", vote: "yes", timestamp: "2024-01-15T10:00:00Z" },
-      { member: "Sarah Wilson", vote: "yes", timestamp: "2024-01-16T14:30:00Z" },
-    ],
-    details: { phoneNumber: "+1 555-0123", message: "Welcome to our investment group!" },
-  },
-  {
-    id: 2,
-    groupId: 1,
-    type: "fund_request",
-    title: "Emergency Medical Fund Request",
-    description: "John Doe requests $25,000 for emergency medical expenses",
-    initiatedBy: "John Doe",
-    dateInitiated: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(), // 8h atrás
-    deadline: "2024-01-21",
-    requiredVotes: 2,
-    votes: [{ member: "Sarah Wilson", vote: "yes", timestamp: "2024-01-15T09:00:00Z" }],
-    details: { amount: 25000, purpose: "Emergency medical expenses", notes: "Need funds for urgent medical procedure" },
-  },
-  {
-    id: 3,
-    groupId: 3,
-    type: "fund_request",
-    title: "Home Improvement Fund Request",
-    description: "Robert Davis requests $15,000 for home improvement",
-    initiatedBy: "Robert Davis",
-    dateInitiated: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2h atrás
-    deadline: "2024-01-17",
-    requiredVotes: 3,
-    votes: [
-      { member: "John Doe", vote: "yes", timestamp: "2024-01-11T11:00:00Z" },
-      { member: "Emma White", vote: "yes", timestamp: "2024-01-12T15:20:00Z" },
-      { member: "James Wilson", vote: "yes", timestamp: "2024-01-13T08:45:00Z" },
-    ],
-    details: { amount: 15000, purpose: "Home improvement", notes: "Renovating kitchen and bathroom" },
-  },
-];
-
-const completedVotes: CompletedVote[] = [
-  {
-    id: 4,
-    groupId: 1,
-    type: "fund_request",
-    title: "Education Fund Request",
-    description: "Sarah Wilson requested $30,000 for education expenses",
-    initiatedBy: "Sarah Wilson",
-    dateInitiated: "2024-01-08",
-    deadline: "2024-01-09",
-    requiredVotes: 2,
-    dateCompleted: "2024-01-09",
-    result: "rejected",
-    votes: [
-      { member: "John Doe", vote: "no", timestamp: "2024-01-08T16:00:00Z" },
-      { member: "Mike Johnson", vote: "no", timestamp: "2024-01-09T10:30:00Z" },
-    ],
-    details: { amount: 30000, purpose: "Education expenses", notes: "Graduate school tuition" },
-  },
-];
-
-// ========== Helpers ==========
-const formatCurrency = (amount: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
-
-const clampPercent = (n: number) => Math.max(0, Math.min(100, n));
-
-const getStatusColor = (status: GroupStatus) => {
+// Helpers locales (iconos/colores de transacciones)
+const getStatusColor = (status: string) => {
   switch (status) {
-    case "Activo": return "bg-green-100 text-green-800";
-    case "Pendiente": return "bg-yellow-100 text-yellow-800";
-    case "Inactivo": return "bg-gray-100 text-gray-800";
+    case "Active": return "bg-green-100 text-green-800";
+    case "Pending": return "bg-yellow-100 text-yellow-800";
+    case "Inactive": return "bg-gray-100 text-gray-800";
+    default: return "bg-gray-100 text-gray-800";
   }
 };
-
-const isMember = (group?: Group | null) =>
-  !!group && group.members.some((m) => m.name === currentUser);
-
 const getTransactionIcon = (type: TransactionType) => {
   switch (type) {
-    case "contribution": return <ArrowUpRight className="h-3 w-3 text-green-600" />;
-    case "withdrawal": return <ArrowDownRight className="h-3 w-3 text-red-600" />;
-    case "dividend": return <DollarSign className="h-3 w-3 text-blue-600" />;
-    case "fee": return <ArrowDownRight className="h-3 w-3 text-orange-600" />;
+    case "contribution": return <ArrowUpRight className="h-3 w-3 text-emerald-600" />;
+    case "withdrawal":  return <ArrowDownRight className="h-3 w-3 text-amber-600" />;
+    case "dividend":    return <DollarSign className="h-3 w-3 text-blue-600" />;
+    case "fee":         return <ArrowDownRight className="h-3 w-3 text-orange-600" />;
+    default:            return <DollarSign className="h-3 w-3" />;
   }
 };
 const getTransactionColor = (type: TransactionType) => {
   switch (type) {
-    case "contribution": return "text-green-600";
-    case "withdrawal": return "text-red-600";
-    case "dividend": return "text-blue-600";
-    case "fee": return "text-orange-600";
+    case "contribution": return "text-emerald-600";
+    case "withdrawal":  return "text-amber-700";
+    case "dividend":    return "text-blue-600";
+    case "fee":         return "text-orange-600";
+    default:            return "text-gray-600";
   }
 };
 
-const getVoteProgress = (vote: ActiveVote | CompletedVote) => {
-  const yesVotes = vote.votes.filter((v) => v.vote === "yes").length;
-  const noVotes = vote.votes.filter((v) => v.vote === "no").length;
-  const totalVotes = vote.votes.length;
-  return { yesVotes, noVotes, totalVotes, requiredVotes: vote.requiredVotes };
-};
-
-const hasUserVoted = (vote: ActiveVote) =>
-  vote.votes.some((v) => v.member === currentUser);
-
-const getUserVote = (vote: ActiveVote): VoteChoice | null =>
-  vote.votes.find((v) => v.member === currentUser)?.vote ?? null;
-
-const isVoteApproved = (vote: ActiveVote) => {
-  const { yesVotes, requiredVotes } = getVoteProgress(vote);
-  return yesVotes >= requiredVotes;
-};
-
-// Si aun votaran todos, ya no se llega al requerido
-const isVoteRejected = (vote: ActiveVote) => {
-  const group = groupAccounts.find((g) => g.id === vote.groupId);
-  const totalMembers = group?.members.length ?? 0;
-  const { yesVotes, totalVotes, requiredVotes } = getVoteProgress(vote);
-  const remainingVotes = totalMembers - totalVotes;
-  return yesVotes + remainingVotes < requiredVotes;
-};
-
-// 24h desde dateInitiated
-const getTimeRemaining = (dateInitiated: string) => {
-  const start = new Date(dateInitiated).getTime();
-  const end = start + 24 * 60 * 60 * 1000;
-  const now = Date.now();
-  const remaining = end - now;
-  if (remaining <= 0) return { hours: 0, minutes: 0, expired: true };
-  const hours = Math.floor(remaining / (1000 * 60 * 60));
-  const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
-  return { hours, minutes, expired: false };
-};
-
-const getVotingProgress = (vote: ActiveVote | CompletedVote) => {
-  const { yesVotes, requiredVotes } = getVoteProgress(vote);
-  return Math.min((yesVotes / requiredVotes) * 100, 100);
-};
-
-// ========== Componente ==========
-type ViewMode = "list" | "active-votes" | "group-details";
-
 export function GroupAccountsView() {
-  const [currentView, setCurrentView] = useState<ViewMode>("list");
+   const { address } = useAccount();
+
+  const {
+    groups,
+    activeVotes,
+    byGroupId,
+    createGroup,
+    createInviteVote,
+    createFundRequestVote,
+    castVote,
+    hasUserVoted,
+    getUserVote,
+    isApproved,
+    isRejected,
+    requiredVotesFor,
+    voteProgress,
+    formatCurrency,
+  } = useGroupsAndVotes();
+
+  const [currentView, setCurrentView] =
+    useState<"list" | "group-details" | "active-votes">("list");
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
-  const [selectedVote, setSelectedVote] = useState<ActiveVote | null>(null);
+
+  // dialogs controlados
+  const [openCreate, setOpenCreate] = useState(false);
+  const [openInvite, setOpenInvite] = useState(false);
+  const [openFund, setOpenFund] = useState(false);
+
+  // modal detalles de voto
+  const [selectedVoteId, setSelectedVoteId] = useState<number | null>(null);
+
+  // forms: crear grupo
+  const [groupName, setGroupName] = useState("");
+  const [groupDesc, setGroupDesc] = useState("");
+  const walletVal = useWalletValidation([""]);
+
+  // forms: invitar miembro
+  const [inviteWallet, setInviteWallet] = useState("");
+  const [inviteMsg, setInviteMsg] = useState("");
+
+  // forms: proponer gasto
   const [requestPurpose, setRequestPurpose] = useState("");
   const [customPurpose, setCustomPurpose] = useState("");
-  const [, setTick] = useState(0); // para refrescar timers
+  const [requestAmount, setRequestAmount] = useState<number | "">("");
+  const [requestDesc, setRequestDesc] = useState("");
+  const [requestTo, setRequestTo] = useState(""); // wallet destino
 
-  // refresco de timers cada minuto
-  useEffect(() => {
-    const t = setInterval(() => setTick((x) => x + 1), 60_000);
-    return () => clearInterval(t);
-  }, []);
+  const isMember = (group?: Group | null) =>
+    !!group && group.members.some((m) => m.name === currentUser);
 
+  const handleBackToList = () => {
+    setCurrentView("list");
+    setSelectedGroup(null);
+  };
   const handleViewGroup = (group: Group) => {
     setSelectedGroup(group);
     setCurrentView("group-details");
   };
   const handleShowVotes = () => setCurrentView("active-votes");
-  const handleBackToList = () => {
-    setCurrentView("list");
-    setSelectedGroup(null);
-  };
-  const resetRequestForm = () => {
-    setRequestPurpose("");
-    setCustomPurpose("");
+
+  const getTimeRemaining = (dateInitiated: string) => {
+    const start = new Date(dateInitiated).getTime();
+    const end = start + 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const remaining = end - now;
+    if (remaining <= 0) return { hours: 0, minutes: 0, expired: true };
+    const hours = Math.floor(remaining / (1000 * 60 * 60));
+    const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+    return { hours, minutes, expired: false };
   };
 
-  // ====== Vistas ======
+  const onCreateInvite = async () => {
+    if (!selectedGroup) return;
+    if (!isAddressish(inviteWallet)) {
+      alert("Ingresa una dirección 0x válida o un ENS .eth");
+      return;
+    }
+    await createInviteVote({
+      groupId: selectedGroup.id,
+      walletAddress: inviteWallet.trim(),
+      message: inviteMsg || undefined,
+      initiatedBy: currentUser,
+    });
+    setInviteWallet("");
+    setInviteMsg("");
+    setOpenInvite(false);
+  };
+
+  const onCreateFundRequest = async () => {
+    if (!selectedGroup || requestAmount === "" || Number(requestAmount) <= 0) return;
+    if (!isAddressish(requestTo)) return;
+    const purpose =
+      requestPurpose === "other" ? (customPurpose || "Otros") : requestPurpose || "General";
+    if (requestDesc.trim().length < 5) return;
+
+    await createFundRequestVote({
+      groupId: selectedGroup.id,
+      amount: Number(requestAmount),
+      purpose,
+      description: requestDesc.trim(),
+      to: requestTo.trim(), // 👈 wallet destino
+      initiatedBy: currentUser,
+    });
+
+    // reset & close
+    setRequestAmount("");
+    setRequestPurpose("");
+    setCustomPurpose("");
+    setRequestDesc("");
+    setRequestTo("");
+    setOpenFund(false);
+  };
+
+const onCreateGroup = async () => {
+  if (!groupName.trim()) return;
+
+  if ( !address) {
+    // muestra un toast / alerta si quieres
+    console.error("No hay dirección conectada");
+    return;
+  }
+
+  if (!walletVal.allValidated) {
+    const ok = await walletVal.validateAll();
+    if (!ok) return;
+  }
+
+  const validMembers = walletVal.values
+    .map((w, i) => ({ w: w.trim(), s: walletVal.state[i] }))
+    .filter((x) => x.w && x.s === "valid")
+    .map((x) => x.w);
+
+  // quitar duplicados y asegurar minúsculas para comparar
+  // Incluye SIEMPRE la address del creador y dedup (case-insensitive)
+  const raw = [address, ...validMembers].filter(Boolean) as string[];
+  const members = Array.from(new Map(raw.map((w) => [w.toLowerCase(), w])).values());
+
+  // Llamada a tu endpoint /createWallet
+  await createGroupWallet({
+    name: groupName.trim(),
+    description: groupDesc.trim(),
+    members,
+  });
+
+  // reset & close
+    setGroupName("");
+    setGroupDesc("");
+    walletVal.reset();
+    setOpenCreate(false);
+
+};
+
+
+  const onCast = async (voteId: number, choice: "yes" | "no") => {
+    await castVote(voteId, currentUser, choice);
+  };
+
+  const selectedVote: ActiveVote | null = useMemo(
+    () => (selectedVoteId ? activeVotes.find((v) => v.id === selectedVoteId) ?? null : null),
+    [selectedVoteId, activeVotes]
+  );
+
+  const canVoteIn = (vote: ActiveVote | null) => {
+    if (!vote) return false;
+    const group = groups.find((g) => g.id === vote.groupId) || null;
+    const time = getTimeRemaining(vote.dateInitiated);
+    const userVoted = hasUserVoted(vote, currentUser);
+    const isInitiator = vote.initiatedBy === currentUser;
+    return isMember(group) && !userVoted && !isInitiator && !isApproved(vote) && !isRejected(vote, group?.members.length ?? 0) && !time.expired;
+  };
+
+  // —————————— VISTAS ——————————
+
   const renderGroupsList = () => (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold">Cuentas Grupales</h2>
-          <p className="text-muted-foreground">Gestiona cuentas de inversión compartidas y colaboraciones</p>
+          <p className="text-muted-foreground">Gestiona cuentas compartidas y colaboraciones</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={handleShowVotes}>
             <VoteIcon className="h-4 w-4 mr-2" />
             Votos Activos
           </Button>
-          <Dialog>
+
+          <Dialog open={openCreate} onOpenChange={setOpenCreate}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
                 Crear Grupo
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
+            <DialogContent className="sm:max-w-[520px]">
               <DialogHeader>
                 <DialogTitle>Crear Nueva Cuenta Grupal</DialogTitle>
-                <DialogDescription>Configura una nueva cuenta de inversión compartida</DialogDescription>
+                <DialogDescription>
+                  Define nombre, descripción y wallets/ENS de miembros a agregar. Tu wallet se añade automáticamente.
+                </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="space-y-2">
                   <Label htmlFor="group-name">Nombre del Grupo</Label>
-                  <Input id="group-name" placeholder="Ingresa el nombre del grupo" />
+                  <Input
+                    id="group-name"
+                    placeholder="Ingresa el nombre del grupo"
+                    value={groupName}
+                    onChange={(e) => setGroupName(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="description">Descripción</Label>
-                  <Textarea id="description" placeholder="Describe la estrategia y objetivos de inversión" />
+                  <Label htmlFor="group-desc">Descripción</Label>
+                  <Textarea
+                    id="group-desc"
+                    placeholder="Describe la estrategia y objetivos"
+                    value={groupDesc}
+                    onChange={(e) => setGroupDesc(e.target.value)}
+                  />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="initial-amount">Contribución Inicial</Label>
-                  <Input id="initial-amount" type="number" placeholder="50000" />
-                </div>
+               <MemberWalletInputs
+                  values={walletVal.values}
+                  state={walletVal.state}
+                  messages={walletVal.messages}
+                  onChangeAt={walletVal.setAt}
+                  onAdd={walletVal.add}
+                  onRemoveAt={walletVal.removeAt}
+                  onValidateAt={walletVal.validateOne}
+                  onValidateAll={walletVal.validateAll}
+                />
               </div>
               <div className="flex justify-end gap-2">
-                <Button variant="outline">Cancelar</Button>
-                <Button>Crear Grupo</Button>
+                <Button variant="outline" onClick={() => setOpenCreate(false)}>Cancelar</Button>
+                <Button
+                  onClick={onCreateGroup}
+                  disabled={!groupName.trim() || !walletVal.allValidated}
+                >
+                  Crear Grupo
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
         </div>
       </div>
 
-      {/* Cards de grupos */}
+      {/* tarjetas de grupo */}
       <div className="grid gap-6">
-        {groupAccounts.map((group) => (
+        {groups.map((group) => (
           <Card key={group.id}>
             <CardHeader>
               <div className="flex items-start justify-between">
@@ -385,14 +318,14 @@ export function GroupAccountsView() {
                   <CardDescription>{group.description}</CardDescription>
                 </div>
                 <div className="text-right">
-                  <div className="text-2xl font-bold">{formatCurrency(group.balance)}</div>
+                  <div className="text-2xl font-bold ">{formatCurrency(group.balance)}</div>
                   <p className="text-sm text-muted-foreground">{group.members.length} miembros</p>
                 </div>
               </div>
             </CardHeader>
+
             <CardContent>
               <div className="space-y-4">
-                {/* Miembros */}
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <Label>Miembros ({group.members.length})</Label>
@@ -418,7 +351,6 @@ export function GroupAccountsView() {
                   </div>
                 </div>
 
-                {/* Acciones */}
                 <div className="flex items-center justify-between pt-4 border-t border-border">
                   <div className="text-sm text-muted-foreground">
                     Creado el {new Date(group.created).toLocaleDateString()}
@@ -436,17 +368,17 @@ export function GroupAccountsView() {
         ))}
       </div>
 
-      {/* Tabla resumen */}
+      {/* resumen */}
       <Card>
         <CardHeader>
           <CardTitle>Resumen de Cuentas Grupales</CardTitle>
-          <CardDescription>Vista general de todas las cuentas de inversión grupales</CardDescription>
+          <CardDescription>Vista general de todas las cuentas</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Nombre</TableHead>
+                <TableHead>Grupo</TableHead>
                 <TableHead>Saldo</TableHead>
                 <TableHead>Miembros</TableHead>
                 <TableHead>Votos Activos</TableHead>
@@ -456,36 +388,14 @@ export function GroupAccountsView() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {groupAccounts.map((group) => {
-                const groupVotes = activeVotes.filter((v) => v.groupId === group.id);
+              {groups.map((group) => {
+                const av = byGroupId(group.id);
                 return (
                   <TableRow key={group.id}>
                     <TableCell className="font-medium">{group.name}</TableCell>
                     <TableCell>{formatCurrency(group.balance)}</TableCell>
-                    <TableCell>
-                      <div className="flex -space-x-1">
-                        {group.members.slice(0, 3).map((m) => (
-                          <Avatar key={m.name} className="h-6 w-6 border-2 border-background">
-                            <AvatarFallback className="text-xs">{m.initials}</AvatarFallback>
-                          </Avatar>
-                        ))}
-                        {group.members.length > 3 && (
-                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-muted border-2 border-background">
-                            <span className="text-xs">+{group.members.length - 3}</span>
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {groupVotes.length > 0 ? (
-                        <div className="flex items-center gap-1">
-                          <VoteIcon className="h-3 w-3" />
-                          <span className="text-sm">{groupVotes.length}</span>
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">Ninguno</span>
-                      )}
-                    </TableCell>
+                    <TableCell>{group.members.length}</TableCell>
+                    <TableCell>{av.length > 0 ? av.length : <span className="text-muted-foreground">Ninguno</span>}</TableCell>
                     <TableCell><Badge className={getStatusColor(group.status)}>{group.status}</Badge></TableCell>
                     <TableCell className="text-muted-foreground">{new Date(group.created).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right">
@@ -509,7 +419,7 @@ export function GroupAccountsView() {
         <Button variant="outline" size="sm" onClick={handleBackToList}>← Regresar</Button>
         <div>
           <h2 className="text-xl font-semibold">Votos Activos</h2>
-          <p className="text-muted-foreground">Participa en decisiones grupales</p>
+          <p className="text-muted-foreground">Invitaciones y solicitudes de fondos</p>
         </div>
       </div>
 
@@ -517,14 +427,13 @@ export function GroupAccountsView() {
         <CardContent className="pt-6">
           <div className="space-y-4">
             {activeVotes.map((vote) => {
-              const group = groupAccounts.find((g) => g.id === vote.groupId);
-              const { yesVotes, noVotes, requiredVotes } = getVoteProgress(vote);
-              const userVoted = hasUserVoted(vote);
-              const userVoteChoice = getUserVote(vote);
-              const approved = isVoteApproved(vote);
-              const rejected = isVoteRejected(vote);
-              const timeRemaining = getTimeRemaining(vote.dateInitiated);
-              const votingProgress = getVotingProgress(vote);
+              const group = groups.find((g) => g.id === vote.groupId);
+              const userVoted = hasUserVoted(vote, currentUser);
+              const userChoice = getUserVote(vote, currentUser);
+              const approved = isApproved(vote);
+              const rejected = isRejected(vote, group?.members.length ?? 0);
+              const time = getTimeRemaining(vote.dateInitiated);
+              const { yes, no } = voteProgress(vote);
 
               return (
                 <div key={vote.id} className="border border-border rounded-lg p-4 space-y-4">
@@ -535,57 +444,55 @@ export function GroupAccountsView() {
                         <Badge variant={vote.type === "invite" ? "secondary" : "outline"}>
                           {vote.type === "invite" ? "Invitación" : "Solicitud de Fondos"}
                         </Badge>
-                        {approved && <Badge className="bg-green-100 text-green-800">Aprobado</Badge>}
-                        {rejected && <Badge className="bg-red-100 text-red-800">Rechazado</Badge>}
-                        {timeRemaining.expired && <Badge className="bg-orange-100 text-orange-800">Expirado</Badge>}
+                        {approved && <Badge className="bg-emerald-100 text-emerald-800">Aprobado</Badge>}
+                        {rejected && <Badge className="bg-amber-100 text-amber-800">Rechazado</Badge>}
+                        {time.expired && <Badge className="bg-orange-100 text-orange-800">Expirado</Badge>}
                       </div>
                       <p className="text-sm text-muted-foreground">{vote.description}</p>
                       <p className="text-xs text-muted-foreground">
                         Grupo: {group?.name} • Iniciado por {vote.initiatedBy}
                       </p>
-                      {"details" in vote && vote.type === "fund_request" && (
-                        <p className="text-sm font-medium">{formatCurrency(vote.details.amount)}</p>
+                      {vote.type === "fund_request" && (
+                        <p className="text-sm font-medium">
+                          {formatCurrency((vote as any).details.amount)} • {(vote as any).details.purpose}
+                          {(vote as any).details?.to ? ` → ${short((vote as any).details.to)}` : ""}
+                        </p>
                       )}
                     </div>
+
                     <div className="text-right space-y-1">
                       <div className="flex items-center gap-1 text-xs text-primary">
                         <Clock className="h-3 w-3" />
-                        {timeRemaining.expired ? (
+                        {time.expired ? (
                           <span className="text-orange-600 font-medium">Expirado</span>
                         ) : (
-                          <span className="font-medium">
-                            {timeRemaining.hours}h {timeRemaining.minutes}m restantes
-                          </span>
+                          <span className="font-medium">{time.hours}h {time.minutes}m</span>
                         )}
                       </div>
-                      <p className="text-sm font-medium">{yesVotes}/{requiredVotes} votos necesarios</p>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <ThumbsUp className="h-3 w-3" /> {yesVotes}
-                        <ThumbsDown className="h-3 w-3 ml-2" /> {noVotes}
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <ThumbsUp className="h-3 w-3" /> {yes}
+                        <ThumbsDown className="h-3 w-3" /> {no}
                       </div>
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Progreso de votación</span>
-                      <span className="font-medium">{votingProgress.toFixed(0)}%</span>
-                    </div>
-                    <Progress value={votingProgress} className="h-2" />
                   </div>
 
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       {userVoted && (
-                        <Badge variant={userVoteChoice === "yes" ? "default" : "destructive"}>
-                          Votaste {userVoteChoice === "yes" ? "Sí" : "No"}
+                        <Badge className={userChoice === "yes" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}>
+                          Tu voto: {userChoice === "yes" ? "Sí" : "No"}
                         </Badge>
                       )}
+                      {!userVoted && vote.initiatedBy === currentUser && (
+                        <Badge className="bg-emerald-100 text-emerald-800">Tu voto: Sí (iniciador)</Badge>
+                      )}
                     </div>
-                    <Button size="sm" variant="outline" onClick={() => setSelectedVote(vote)}>
-                      <Eye className="h-3 w-3 mr-1" />
-                      Ver Detalles y Votar
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setSelectedVoteId(vote.id)}>
+                        <Eye className="h-3 w-3 mr-1" />
+                        Ver Detalles
+                      </Button>
+                    </div>
                   </div>
                 </div>
               );
@@ -604,6 +511,7 @@ export function GroupAccountsView() {
 
   const renderGroupDetails = () => {
     if (!selectedGroup) return null;
+    const votes = byGroupId(selectedGroup.id);
 
     return (
       <div className="space-y-6">
@@ -633,123 +541,219 @@ export function GroupAccountsView() {
                 </div>
               </div>
             </div>
-            <div>
-              <Label className="mb-3 block">Votos Activos del Grupo</Label>
-              <div className="space-y-3">
-                {activeVotes
-                  .filter((v) => v.groupId === selectedGroup.id)
-                  .map((vote) => {
-                    const { yesVotes, noVotes, requiredVotes } = getVoteProgress(vote);
-                    const userVoted = hasUserVoted(vote);
-                    const userVoteChoice = getUserVote(vote);
-                    const approved = isVoteApproved(vote);
-                    const rejected = isVoteRejected(vote);
-                    const canVote = isMember(selectedGroup) && !userVoted && !approved && !rejected;
-                    const timeRemaining = getTimeRemaining(vote.dateInitiated);
-                    const votingProgress = getVotingProgress(vote);
 
-                    return (
-                      <div key={vote.id} className="border border-border rounded-lg p-4 space-y-4">
-                        <div className="flex items-start justify-between">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-medium">{vote.title}</h4>
-                              <Badge variant={vote.type === "invite" ? "secondary" : "outline"}>
-                                {vote.type === "invite" ? "Invitación" : "Solicitud de Fondos"}
-                              </Badge>
-                              {approved && <Badge className="bg-green-100 text-green-800">Aprobado</Badge>}
-                              {rejected && <Badge className="bg-red-100 text-red-800">Rechazado</Badge>}
-                              {timeRemaining.expired && <Badge className="bg-orange-100 text-orange-800">Expirado</Badge>}
-                            </div>
-                            <p className="text-sm text-muted-foreground">{vote.description}</p>
-                            <p className="text-xs text-muted-foreground">Iniciado por {vote.initiatedBy}</p>
-                            {vote.type === "fund_request" && (
-                              <p className="text-sm font-medium">{formatCurrency(vote.details.amount)}</p>
-                            )}
-                          </div>
-                          <div className="text-right space-y-1">
-                            <div className="flex items-center gap-1 text-xs text-primary">
-                              <Clock className="h-3 w-3" />
-                              {timeRemaining.expired ? (
-                                <span className="text-orange-600 font-medium">Expirado</span>
-                              ) : (
-                                <span className="font-medium">
-                                  {timeRemaining.hours}h {timeRemaining.minutes}m restantes
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-sm font-medium">{yesVotes}/{requiredVotes} votos</p>
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <ThumbsUp className="h-3 w-3" /> {yesVotes}
-                              <ThumbsDown className="h-3 w-3 ml-2" /> {noVotes}
-                            </div>
-                          </div>
-                        </div>
+            {/* Acciones rápidas */}
+            {isMember(selectedGroup) && (
+              <div className="grid grid-cols-2 gap-3">
+                <Dialog open={openInvite} onOpenChange={setOpenInvite}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="w-full">
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Proponer Invitación
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[500px]">
+                    <DialogHeader>
+                      <DialogTitle>Proponer Invitación de Miembro</DialogTitle>
+                      <DialogDescription>
+                        Inicia una votación para invitar a un nuevo miembro al grupo {selectedGroup.name}.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                      <div className="space-y-2">
+                        <Label>Dirección de Billetera o ENS</Label>
+                        <Input
+                          placeholder="0x... o nombre.eth"
+                          value={inviteWallet}
+                          onChange={(e) => setInviteWallet(e.target.value.trim())}
+                        />
+                        {!inviteWallet || isAddressish(inviteWallet) ? null : (
+                          <p className="text-xs text-red-600">Formato inválido</p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Mensaje (opcional)</Label>
+                        <Textarea
+                          placeholder="Añade un mensaje personal"
+                          value={inviteMsg}
+                          onChange={(e) => setInviteMsg(e.target.value)}
+                          rows={3}
+                        />
+                      </div>
+                      <Alert>
+                        <VoteIcon className="h-4 w-4" />
+                        <AlertDescription>
+                          Se creará una votación de 24h. Votos requeridos: {requiredVotesFor(selectedGroup.members.length)}.
+                        </AlertDescription>
+                      </Alert>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => { setInviteWallet(""); setInviteMsg(""); }}>
+                        Cancelar
+                      </Button>
+                      <Button onClick={onCreateInvite} disabled={!isAddressish(inviteWallet)}>
+                        Crear Votación
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
 
+                <Dialog open={openFund} onOpenChange={setOpenFund}>
+                  <DialogTrigger asChild>
+                    <Button className="w-full">
+                      <DollarSign className="h-4 w-4 mr-2" />
+                      Proponer Gasto
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[500px]">
+                    <DialogHeader>
+                      <DialogTitle>Crear Solicitud de Fondos</DialogTitle>
+                      <DialogDescription>
+                        Crea una votación para solicitar fondos del grupo {selectedGroup.name}.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                      <div className="space-y-2">
+                        <Label>Cantidad Solicitada</Label>
+                        <Input
+                          type="number"
+                          placeholder="1000"
+                          value={requestAmount}
+                          onChange={(e) => setRequestAmount(e.target.value === "" ? "" : Number(e.target.value))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Propósito</Label>
+                        <Select value={requestPurpose} onValueChange={setRequestPurpose}>
+                          <SelectTrigger><SelectValue placeholder="Selecciona el propósito" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="emergency">Emergencia</SelectItem>
+                            <SelectItem value="medical">Gastos médicos</SelectItem>
+                            <SelectItem value="education">Educación</SelectItem>
+                            <SelectItem value="home">Mejoras del hogar</SelectItem>
+                            <SelectItem value="investment">Oportunidad de inversión</SelectItem>
+                            <SelectItem value="other">Otro</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {requestPurpose === "other" && (
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground">Progreso de votación</span>
-                            <span className="font-medium">{votingProgress.toFixed(0)}%</span>
-                          </div>
-                          <Progress value={votingProgress} className="h-2" />
+                          <Label>Especifica el propósito</Label>
+                          <Input
+                            value={customPurpose}
+                            onChange={(e) => setCustomPurpose(e.target.value)}
+                            placeholder="Escribe el propósito"
+                          />
                         </div>
+                      )}
+                      <div className="space-y-2">
+                        <Label>Descripción</Label>
+                        <Textarea
+                          placeholder="Motivo del gasto a proponer"
+                          value={requestDesc}
+                          onChange={(e) => setRequestDesc(e.target.value)}
+                          rows={3}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Wallet destino</Label>
+                        <Input
+                          placeholder="0x... o nombre.eth"
+                          value={requestTo}
+                          onChange={(e) => setRequestTo(e.target.value.trim())}
+                        />
+                        {!requestTo || isAddressish(requestTo) ? null : (
+                          <p className="text-xs text-red-600">Dirección/ENS no válida</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => { setRequestAmount(""); setRequestPurpose(""); setCustomPurpose(""); setRequestDesc(""); setRequestTo(""); }}>
+                        Cancelar
+                      </Button>
+                      <Button
+                        onClick={onCreateFundRequest}
+                        disabled={requestAmount === "" || Number(requestAmount) <= 0 || !isAddressish(requestTo)}
+                      >
+                        Crear Votación
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            )}
 
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            {userVoted && (
-                              <Badge variant={userVoteChoice === "yes" ? "default" : "destructive"}>
-                                Votaste {userVoteChoice === "yes" ? "Sí" : "No"}
-                              </Badge>
-                            )}
-                          </div>
-                          {canVote && !timeRemaining.expired && (
-                            <div className="flex gap-2">
-                              <Button size="sm" className="bg-green-600 hover:bg-green-700">
-                                <ThumbsUp className="h-3 w-3 mr-1" />
-                                Votar Sí
-                              </Button>
-                              <Button size="sm" variant="destructive">
-                                <ThumbsDown className="h-3 w-3 mr-1" />
-                                Votar No
-                              </Button>
-                            </div>
+            {/* Votos activos del grupo */}
+            <div className="space-y-3">
+              <Label className="text-base font-medium">Votos Activos del Grupo</Label>
+              {votes.length === 0 && <div className="text-sm text-muted-foreground">No hay votos activos</div>}
+              {votes.map((vote) => {
+                const userVoted = hasUserVoted(vote, currentUser);
+                const userChoice = getUserVote(vote, currentUser);
+                const approved = isApproved(vote);
+                const rejected = isRejected(vote, selectedGroup.members.length);
+                const time = getTimeRemaining(vote.dateInitiated);
+                const { yes, no } = voteProgress(vote);
+
+                return (
+                  <div key={vote.id} className="border border-border rounded-lg p-4 space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium">{vote.title}</h4>
+                          <Badge variant={vote.type === "invite" ? "secondary" : "outline"}>
+                            {vote.type === "invite" ? "Invitación" : "Solicitud de Fondos"}
+                          </Badge>
+                          {approved && <Badge className="bg-emerald-100 text-emerald-800">Aprobado</Badge>}
+                          {rejected && <Badge className="bg-amber-100 text-amber-800">Rechazado</Badge>}
+                          {time.expired && <Badge className="bg-orange-100 text-orange-800">Expirado</Badge>}
+                        </div>
+                        <p className="text-sm text-muted-foreground">{vote.description}</p>
+                        {vote.type === "fund_request" && (
+                          <p className="text-sm font-medium">
+                            {formatCurrency((vote as any).details.amount)} • {(vote as any).details.purpose}
+                            {(vote as any).details?.to ? ` → ${short((vote as any).details.to)}` : ""}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right space-y-1">
+                        <div className="flex items-center gap-1 text-xs text-primary">
+                          <Clock className="h-3 w-3" />
+                          {time.expired ? (
+                            <span className="text-orange-600 font-medium">Expirado</span>
+                          ) : (
+                            <span className="font-medium">{time.hours}h {time.minutes}m</span>
                           )}
                         </div>
-                      </div>
-                    );
-                  })}
-                {activeVotes.filter((v) => v.groupId === selectedGroup.id).length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <VoteIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p>No hay votos activos para este grupo</p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <Label className="mb-3 block text-base font-medium">Contribuciones de Miembros</Label>
-              <div className="space-y-3">
-                {selectedGroup.members.map((m) => (
-                  <div key={m.name} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-10 w-10"><AvatarFallback>{m.initials}</AvatarFallback></Avatar>
-                      <div>
-                        <p className="font-medium">{m.name}</p>
-                        {m.name === currentUser && <p className="text-xs text-muted-foreground">Tú</p>}
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <ThumbsUp className="h-3 w-3" /> {yes}
+                          <ThumbsDown className="h-3 w-3" /> {no}
+                        </div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-medium">{m.contribution}%</p>
-                      <p className="text-sm text-muted-foreground">
-                        {formatCurrency((selectedGroup.balance * m.contribution) / 100)}
-                      </p>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {userVoted && (
+                          <Badge className={userChoice === "yes" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}>
+                            Tu voto: {userChoice === "yes" ? "Sí" : "No"}
+                          </Badge>
+                        )}
+                        {!userVoted && vote.initiatedBy === currentUser && (
+                          <Badge className="bg-emerald-100 text-emerald-800">Tu voto: Sí (iniciador)</Badge>
+                        )}
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => setSelectedVoteId(vote.id)}>
+                        <Eye className="h-3 w-3 mr-1" />
+                        Ver Detalles
+                      </Button>
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
 
+            {/* Transacciones recientes */}
             <div>
               <Label className="mb-3 block text-base font-medium">Transacciones Recientes</Label>
               <div className="space-y-3 max-h-60 overflow-y-auto">
@@ -775,262 +779,167 @@ export function GroupAccountsView() {
                 ))}
               </div>
             </div>
-
-            {/* Acciones rápidas (mock) */}
-            {isMember(selectedGroup) && (
-              <div className="grid grid-cols-2 gap-3 pt-4 border-t border-border">
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" className="w-full">
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      Proponer Invitación
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-[500px]">
-                    <DialogHeader>
-                      <DialogTitle>Proponer Invitación de Miembro</DialogTitle>
-                      <DialogDescription>
-                        Inicia una votación para invitar a un nuevo miembro al grupo {selectedGroup.name}.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="phone">Número de Teléfono</Label>
-                        <Input id="phone" type="tel" placeholder="Ingresa el número de teléfono" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="name">Nombre del Miembro</Label>
-                        <Input id="name" placeholder="Ingresa el nombre completo" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="message">Mensaje (Opcional)</Label>
-                        <Textarea id="message" placeholder="Añade un mensaje personal" rows={3} />
-                      </div>
-                      <Alert>
-                        <VoteIcon className="h-4 w-4" />
-                        <AlertDescription>
-                          Esto creará una votación que requiere aprobación de la mayoría de los miembros.
-                        </AlertDescription>
-                      </Alert>
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline">Cancelar</Button>
-                      <Button>Crear Votación</Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" className="w-full">
-                      <DollarSign className="h-4 w-4 mr-2" />
-                      Proponer Gasto
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-[500px]">
-                    <DialogHeader>
-                      <DialogTitle>Crear Solicitud de Fondos</DialogTitle>
-                      <DialogDescription>
-                        Crea una votación para solicitar fondos del grupo {selectedGroup.name}.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="amount">Cantidad Solicitada</Label>
-                        <Input id="amount" type="number" placeholder="Ingresa la cantidad" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="purpose">Propósito</Label>
-                        <Select value={requestPurpose} onValueChange={setRequestPurpose}>
-                          <SelectTrigger><SelectValue placeholder="Selecciona el propósito" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="emergency">Emergencia</SelectItem>
-                            <SelectItem value="medical">Gastos médicos</SelectItem>
-                            <SelectItem value="education">Educación</SelectItem>
-                            <SelectItem value="home">Mejoras del hogar</SelectItem>
-                            <SelectItem value="investment">Oportunidad de inversión</SelectItem>
-                            <SelectItem value="other">Otro</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {requestPurpose === "other" && (
-                        <div className="space-y-2">
-                          <Label htmlFor="custom-purpose">Especificar Propósito</Label>
-                          <Input
-                            id="custom-purpose"
-                            value={customPurpose}
-                            onChange={(e) => setCustomPurpose(e.target.value)}
-                            placeholder="Especifica el propósito"
-                          />
-                        </div>
-                      )}
-                      <div className="space-y-2">
-                        <Label htmlFor="notes">Notas Adicionales</Label>
-                        <Textarea id="notes" placeholder="Proporciona detalles sobre tu solicitud" rows={3} />
-                      </div>
-                      <Alert>
-                        <VoteIcon className="h-4 w-4" />
-                        <AlertDescription>
-                          Esto creará una votación que requiere aprobación de la mayoría (vigencia 24h).
-                        </AlertDescription>
-                      </Alert>
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={resetRequestForm}>Cancelar</Button>
-                      <Button>Crear Votación</Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>
     );
   };
 
-  // ========== Render principal ==========
   return (
     <div className="space-y-6">
       {currentView === "list" && renderGroupsList()}
       {currentView === "active-votes" && renderActiveVotes()}
       {currentView === "group-details" && renderGroupDetails()}
 
-      {/* Modal detalle de voto */}
-      {selectedVote && (
-        <Dialog open={!!selectedVote} onOpenChange={() => setSelectedVote(null)}>
-          <DialogContent className="sm:max-w-[600px]">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <VoteIcon className="h-5 w-5" />
-                {selectedVote.title}
-                <Badge variant={selectedVote.type === "invite" ? "secondary" : "outline"}>
-                  {selectedVote.type === "invite" ? "Invitación de Miembro" : "Solicitud de Fondos"}
-                </Badge>
-              </DialogTitle>
-              <DialogDescription>Detalles de la votación</DialogDescription>
-            </DialogHeader>
+      {/* Modal de detalles (con barra de progreso y botones de voto) */}
+      <Dialog open={!!selectedVoteId} onOpenChange={(o) => !o && setSelectedVoteId(null)}>
+        <DialogContent className="sm:max-w-[640px]">
+          {selectedVote ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <VoteIcon className="h-5 w-5" />
+                  {selectedVote.title}
+                  <Badge variant={selectedVote.type === "invite" ? "secondary" : "outline"}>
+                    {selectedVote.type === "invite" ? "Invitación de Miembro" : "Solicitud de Fondos"}
+                  </Badge>
+                </DialogTitle>
+                <DialogDescription>Revisa el detalle y emite tu voto.</DialogDescription>
+              </DialogHeader>
 
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Iniciado por</Label>
-                  <p className="font-medium">{selectedVote.initiatedBy}</p>
-                </div>
-                <div>
-                  <Label>Fecha de Inicio</Label>
-                  <p className="text-sm">{new Date(selectedVote.dateInitiated).toLocaleDateString("es-ES")}</p>
-                </div>
-              </div>
-
-              {selectedVote.type === "fund_request" && (
+              <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>Cantidad Solicitada</Label>
-                    <p className="text-2xl font-bold text-primary">{formatCurrency(selectedVote.details.amount)}</p>
+                    <Label>Grupo</Label>
+                    <p className="font-medium">
+                      {groups.find((g) => g.id === selectedVote.groupId)?.name ?? "—"}
+                    </p>
                   </div>
                   <div>
-                    <Label>Propósito</Label>
-                    <p className="font-medium">{selectedVote.details.purpose}</p>
+                    <Label>Iniciado por</Label>
+                    <p className="font-medium">{selectedVote.initiatedBy}</p>
                   </div>
                 </div>
-              )}
-              {selectedVote.type === "invite" && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Teléfono</Label>
-                    <p className="font-medium">{selectedVote.details.phoneNumber}</p>
-                  </div>
-                  <div>
-                    <Label>Mensaje</Label>
-                    <p className="font-medium">{selectedVote.details.message || "Sin mensaje"}</p>
-                  </div>
-                </div>
-              )}
-              {"notes" in selectedVote.details && selectedVote.details.notes && (
+
                 <div>
-                  <Label>Notas</Label>
-                  <div className="bg-muted rounded-md p-3">
-                    <p className="text-sm">{selectedVote.details.notes}</p>
-                  </div>
+                  <Label>Descripción</Label>
+                  <p className="text-sm text-muted-foreground mt-1">{selectedVote.description}</p>
                 </div>
-              )}
 
-              <div>
-                <Label>Progreso de Votación</Label>
-                <div className="mt-2 space-y-3">
-                  {(() => {
-                    const { yesVotes, noVotes, requiredVotes } = getVoteProgress(selectedVote);
-                    const progress = getVotingProgress(selectedVote);
-                    return (
-                      <>
-                        <div className="flex items-center justify-between text-sm">
-                          <span>Votos necesarios: {requiredVotes}</span>
-                          <span>Votos a favor: {yesVotes}</span>
-                        </div>
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground">Hacia aprobación</span>
-                            <span className="font-medium">{progress.toFixed(0)}%</span>
-                          </div>
-                          <Progress value={progress} className="h-3" />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="bg-green-100 text-green-800 p-2 rounded flex items-center justify-center">
-                            <ThumbsUp className="h-4 w-4 mr-2" />
-                            {yesVotes} Sí
-                          </div>
-                          <div className="bg-red-100 text-red-800 p-2 rounded flex items-center justify-center">
-                            <ThumbsDown className="h-4 w-4 mr-2" />
-                            {noVotes} No
-                          </div>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {(() => {
-                const group = groupAccounts.find((g) => g.id === selectedVote.groupId);
-                const userVoted = hasUserVoted(selectedVote);
-                const userVoteChoice = getUserVote(selectedVote);
-                const approved = isVoteApproved(selectedVote);
-                const rejected = isVoteRejected(selectedVote);
-                const timeRemaining = getTimeRemaining(selectedVote.dateInitiated);
-                const canVote = isMember(group) && !userVoted && !approved && !rejected && !timeRemaining.expired;
-
-                return (
-                  <div className="flex items-center justify-between pt-4 border-t">
+                {selectedVote.type === "fund_request" && (
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      {userVoted && (
-                        <Badge variant={userVoteChoice === "yes" ? "default" : "destructive"}>
-                          Tu voto: {userVoteChoice === "yes" ? "Sí" : "No"}
-                        </Badge>
-                      )}
+                      <Label>Cantidad Solicitada</Label>
+                      <p className="text-xl font-bold text-primary">
+                        {formatCurrency((selectedVote as any).details.amount)}
+                      </p>
                     </div>
-                    <div className="flex gap-2">
-                      <Button variant="outline" onClick={() => setSelectedVote(null)}>Cerrar</Button>
-                      {canVote && (
-                        <>
-                          <Button className="bg-green-600 hover:bg-green-700">
-                            <ThumbsUp className="h-4 w-4 mr-2" />
-                            Votar Sí
-                          </Button>
-                          <Button variant="destructive">
-                            <ThumbsDown className="h-4 w-4 mr-2" />
-                            Votar No
-                          </Button>
-                        </>
-                      )}
+                    <div>
+                      <Label>Propósito</Label>
+                      <p className="font-medium">{(selectedVote as any).details.purpose}</p>
+                    </div>
+                    {(selectedVote as any).details?.to && (
+                      <div className="col-span-2">
+                        <Label>Enviar a</Label>
+                        <p className="font-medium">{short((selectedVote as any).details.to)}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {selectedVote.type === "invite" && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Billetera / ENS</Label>
+                      <p className="font-medium">{short((selectedVote as any).details.walletAddress)}</p>
+                    </div>
+                    <div>
+                      <Label>Mensaje</Label>
+                      <p className="font-medium">{(selectedVote as any).details.message || "—"}</p>
                     </div>
                   </div>
-                );
-              })()}
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
+                )}
+
+                {/* Estado / tiempo y progreso */}
+                {(() => {
+                  const { percent, yes, no, required } = voteProgress(selectedVote);
+                  const time = getTimeRemaining(selectedVote.dateInitiated);
+                  const group = groups.find((g) => g.id === selectedVote.groupId);
+                  const approved = isApproved(selectedVote);
+                  const rejected = isRejected(selectedVote, group?.members.length ?? 0);
+
+                  return (
+                    <div className="space-y-3">
+                      <div className="bg-muted/50 rounded-lg p-3 flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-primary" />
+                          {time.expired ? (
+                            <span className="text-orange-600 font-medium">Votación expirada</span>
+                          ) : (
+                            <span className="font-medium">{time.hours}h {time.minutes}m restantes</span>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          {approved && <Badge className="bg-emerald-100 text-emerald-800">Aprobado</Badge>}
+                          {rejected && <Badge className="bg-amber-100 text-amber-800">Rechazado</Badge>}
+                          {!approved && !rejected && !time.expired && <Badge variant="outline">En Progreso</Badge>}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="text-muted-foreground">Progreso hacia aprobación</span>
+                          <span className="font-medium">{Math.round(percent)}%</span>
+                        </div>
+                        <Progress value={percent} className="h-3" />
+                        <div className="flex items-center justify-between text-xs mt-2">
+                          <span>Requeridos: {required}</span>
+                          <span>Sí: {yes} • No: {no}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Acciones de voto */}
+                <div className="flex items-center justify-between pt-4 border-t">
+                  <div className="flex items-center gap-2">
+                    {hasUserVoted(selectedVote, currentUser) && (
+                      <Badge className={getUserVote(selectedVote, currentUser) === "yes" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}>
+                        Tu voto: {getUserVote(selectedVote, currentUser) === "yes" ? "Sí" : "No"}
+                      </Badge>
+                    )}
+                    {!hasUserVoted(selectedVote, currentUser) && selectedVote.initiatedBy === currentUser && (
+                      <Badge className="bg-emerald-100 text-emerald-800">Tu voto: Sí (iniciador)</Badge>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setSelectedVoteId(null)}>
+                      Cerrar
+                    </Button>
+                    <Button
+                      className="bg-emerald-600 hover:bg-emerald-700"
+                      onClick={() => selectedVote && onCast(selectedVote.id, "yes")}
+                      disabled={!canVoteIn(selectedVote)}
+                    >
+                      <ThumbsUp className="h-4 w-4 mr-2" />
+                      Votar Sí
+                    </Button>
+                    <Button
+                      className="bg-amber-600 hover:bg-amber-700 text-white"
+                      onClick={() => selectedVote && onCast(selectedVote.id, "no")}
+                      disabled={!canVoteIn(selectedVote)}
+                    >
+                      <ThumbsDown className="h-4 w-4 mr-2" />
+                      Votar No
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

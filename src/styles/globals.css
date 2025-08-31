@@ -10,13 +10,13 @@
   --card-foreground: #1a1a1a;
   --popover: #ffffff;
   --popover-foreground: #1a1a1a;
-  --primary: #F36614;
+  --primary: #69c49b;
   --primary-foreground: #ffffff;
-  --secondary: #fff5f0;
+  --secondary: #e8f5f0;
   --secondary-foreground: #1a1a1a;
   --muted: #f8f9fa;
   --muted-foreground: #6c757d;
-  --accent: #ffeee6;
+  --accent: #d4f0e7;
   --accent-foreground: #1a1a1a;
   --destructive: #dc3545;
   --destructive-foreground: #ffffff;
@@ -26,29 +26,28 @@
   --switch-background: #dee2e6;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: #F36614;
-  --chart-1: #F36614;
-  --chart-2: #28a745;
-  --chart-3: #17a2b8;
+  --ring: #69c49b;
+  --chart-1: #69c49b;
+  --chart-2: #3da5be;
+  --chart-3: #41a7be;
   --chart-4: #ffc107;
   --chart-5: #6f42c1;
   --success: #28a745;
   --success-foreground: #ffffff;
   --warning: #ffc107;
   --warning-foreground: #1a1a1a;
-  --info: #17a2b8;
+  --info: #3da5be;
   --info-foreground: #ffffff;
   --radius: 0.625rem;
   --sidebar: #ffffff;
   --sidebar-foreground: #1a1a1a;
-  --sidebar-primary: #F36614;
+  --sidebar-primary: #69c49b;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #fff5f0;
+  --sidebar-accent: #e8f5f0;
   --sidebar-accent-foreground: #1a1a1a;
   --sidebar-border: #e9ecef;
-  --sidebar-ring: #F36614;
+  --sidebar-ring: #69c49b;
 }
-
 .dark {
   --background: #2d2d2d;
   --foreground: #ffffff;
@@ -56,7 +55,7 @@
   --card-foreground: #ffffff;
   --popover: #1a1a1a;
   --popover-foreground: #ffffff;
-  --primary: #F36614;
+  --primary: #69c49b;
   --primary-foreground: #ffffff;
   --secondary: #404040;
   --secondary-foreground: #ffffff;
@@ -70,28 +69,28 @@
   --input: #404040;
   --input-background: #404040;
   --switch-background: #6c757d;
-  --ring: #F36614;
+  --ring: #69c49b;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --chart-1: #F36614;
-  --chart-2: #28a745;
-  --chart-3: #17a2b8;
+  --chart-1: #69c49b;
+  --chart-2: #3da5be;
+  --chart-3: #41a7be;
   --chart-4: #ffc107;
   --chart-5: #6f42c1;
   --success: #28a745;
   --success-foreground: #ffffff;
   --warning: #ffc107;
   --warning-foreground: #1a1a1a;
-  --info: #17a2b8;
+  --info: #3da5be;
   --info-foreground: #ffffff;
   --sidebar: #1a1a1a;
   --sidebar-foreground: #ffffff;
-  --sidebar-primary: #F36614;
+  --sidebar-primary: #69c49b;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #404040;
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #404040;
-  --sidebar-ring: #F36614;
+  --sidebar-ring: #69c49b;
 }
 
 @theme inline {

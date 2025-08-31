@@ -223,26 +223,29 @@ export function IndividualFundsView() {
 
           {/* Actions */}
           <div className="flex gap-2 pt-4">
-            <Dialog open={showTransactions} onOpenChange={setShowTransactions}>
-              <DialogTrigger asChild>
-                <Button variant="outline" className="flex-1">
-                  Ver Transacciones
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[700px]">
-                <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2">
-                    <Wallet className="h-5 w-5" />
-                    Historial de Transacciones
-                  </DialogTitle>
-                  <DialogDescription>
-                    Historial completo de las transacciones de tu billetera
-                  </DialogDescription>
-                </DialogHeader>
+           <Dialog open={showTransactions} onOpenChange={setShowTransactions}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="flex-1">Ver Transacciones</Button>
+            </DialogTrigger>
 
-                <div className="space-y-4">
+            {/* Modal ancho y alto acotados; SIN overflow en este nodo */}
+            <DialogContent className="w-[95vw] sm:max-w-[1000px] p-0">
+              {/* Grid de 3 filas: header / scroll-area / footer */}
+              <div className="grid grid-rows-[auto_minmax(0,1fr)_auto]">
+                {/* Header */}
+                <div className="p-4 border-b">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <Wallet className="h-5 w-5" />
+                      Historial de Transacciones
+                    </DialogTitle>
+                    <DialogDescription className="text-left">
+                      Historial completo de las transacciones de tu billetera
+                    </DialogDescription>
+                  </DialogHeader>
+
                   {/* Resumen rápido */}
-                  <div className="bg-muted/50 rounded-lg p-3">
+                  <div className="bg-muted/50 rounded-lg p-3 mt-4">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-medium">Billetera</p>
@@ -258,23 +261,26 @@ export function IndividualFundsView() {
                       </div>
                     </div>
                   </div>
+                </div>
 
-                  {/* Tabla */}
-                  <div className="max-h-96 overflow-y-auto">
-                    <Table>
+                {/* Cuerpo scrolleable (vertical y horizontal) */}
+                <div className="overflow-auto p-4">
+                  <div className="overflow-auto">
+                    {/* min-w fuerza el scroll horizontal si falta ancho */}
+                    <Table className="min-w-[900px]">
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Tipo</TableHead>
-                          <TableHead>Monto</TableHead>
-                          <TableHead>Dirección</TableHead>
-                          <TableHead>Fecha</TableHead>
-                          <TableHead>Estado</TableHead>
+                          <TableHead className="whitespace-nowrap">Tipo</TableHead>
+                          <TableHead className="whitespace-nowrap">Monto</TableHead>
+                          <TableHead className="whitespace-nowrap">Dirección</TableHead>
+                          <TableHead className="whitespace-nowrap">Fecha</TableHead>
+                          <TableHead className="whitespace-nowrap">Estado</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {transactionHistory.map((tx) => (
                           <TableRow key={tx.id}>
-                            <TableCell>
+                            <TableCell className="whitespace-nowrap">
                               <div className="flex items-center gap-2">
                                 {getTransactionIcon(tx.type)}
                                 <div>
@@ -286,14 +292,11 @@ export function IndividualFundsView() {
                               </div>
                             </TableCell>
 
-                            <TableCell>
-                              <div className={`font-medium ${getTransactionColor(tx.type)}`}>
-                                {tx.type === "receive" ? "+" : ""}
-                                {formatCurrency(tx.amount)}
-                              </div>
+                            <TableCell className={`whitespace-nowrap font-medium ${getTransactionColor(tx.type)}`}>
+                              {tx.type === "receive" ? "+" : ""}{formatCurrency(tx.amount)}
                             </TableCell>
 
-                            <TableCell>
+                            <TableCell className="whitespace-nowrap">
                               <div className="font-mono text-xs">
                                 <p className="text-muted-foreground">
                                   {tx.type === "receive" ? "De:" : "A:"}{" "}
@@ -311,7 +314,7 @@ export function IndividualFundsView() {
                               </div>
                             </TableCell>
 
-                            <TableCell>
+                            <TableCell className="whitespace-nowrap">
                               <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                 <Calendar className="h-3 w-3" />
                                 {new Date(tx.date).toLocaleDateString("es-ES", {
@@ -324,7 +327,7 @@ export function IndividualFundsView() {
                               </div>
                             </TableCell>
 
-                            <TableCell>
+                            <TableCell className="whitespace-nowrap">
                               <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
                                 {tx.status}
                               </Badge>
@@ -334,15 +337,18 @@ export function IndividualFundsView() {
                       </TableBody>
                     </Table>
                   </div>
-
-                  <div className="flex justify-end pt-4 border-t">
-                    <Button variant="outline" onClick={() => setShowTransactions(false)}>
-                      Cerrar
-                    </Button>
-                  </div>
                 </div>
-              </DialogContent>
-            </Dialog>
+
+                {/* Footer fijo */}
+                <div className="p-4 border-t flex justify-end">
+                  <Button variant="outline" onClick={() => setShowTransactions(false)}>
+                    Cerrar
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
 
             {/* Si quieres mantener también el acceso directo al explorer: */}
             <Button

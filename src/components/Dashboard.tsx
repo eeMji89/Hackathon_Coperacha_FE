@@ -99,7 +99,7 @@ export function Dashboard() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
                 <TrendingUp className="h-4 w-4" />
               </div>
-              <span className="font-semibold">Gestor de Fondos</span>
+              <span className="font-semibold">COPERACHA</span>
             </div>
           </SidebarHeader>
           <SidebarContent>
